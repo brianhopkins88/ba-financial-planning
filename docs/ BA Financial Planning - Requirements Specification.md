@@ -1,101 +1,195 @@
-# BA Financial Analysis - Requirements Specification
+### **BA Financial Analysis - Requirements Specification**
 
-**Version:** 8.0 (Scenario & Loans Complete)
-**Date:** November 23, 2025
-**Scope:** "Stay HGV" Scenario + Scenario Management + Advanced Debt Logic
 
-# 1. System Capabilities & Navigation
 
-## 1.1 Scenario Management (New)
-- **Data Structure:** All data belongs to a specific "Scenario."
+**Version:** 8.2 (Consolidated) **Date:** November 23, 2025 **Scope:** Full Stack (Scenario Engine, App Shell, Loans, Expenses, Dashboard)
+
+------
+
+
+
+# 1. System Architecture & Navigation
+
+
+
+
+
+## 1.1 Scenario-Based Data Model
+
+
+
+- **Core Concept:** The application never edits a "global" state directly. All data resides within specific "Scenarios" stored in `hgv_data.json`.
 - **Default Scenario:** "Current Home HGV".
-- **Naming Convention:** The system must automatically append the "Month Year" of the data date to the display name (e.g., "Current Home HGV - Nov 2025").
+- **Naming Convention:** System automatically tracks `created` and `lastUpdated` timestamps for every scenario.
 - **Scenario Actions:**
-  - **Selector:** A dropdown in the Sidebar to switch between saved scenarios.
-  - **Create New:** User can define a name; system clones current state to a new ID.
-  - **Save:** Updates are persisted to the active scenario immediately (or on blur).
+  - **Selector:** A dropdown in the global Sidebar allows instant switching between saved scenarios.
+  - **Clone/Snapshot:** A "New / Clone" button allows the user to deep-copy the active scenario to a new unique ID (e.g., `scen_1732389102`) to test hypothetical changes without losing the original state.
+  - **Persistence:** All edits must trigger a generic `updateScenarioData` action that updates the `lastUpdated`timestamp.
 
-## 1.2 Global Interface Standards
-- **Date Awareness:**
-  - Every view must display a "Data as of: [Date]" header.
-  - This date represents the `lastUpdated` timestamp of the active scenario.
+
+
+## 1.2 Global User Interface (App Shell)
+
+
+
+- **Structure:** The app uses a persistent **Sidebar Layout**.
 - **Navigation Menu:**
-  1.  **Dashboard:** High-level metrics (Net Worth, Liquidity).
-  2.  **Expenses:** (New) Categorized monthly obligations.
-  3.  **Loans:** (New) Advanced debt management and payoff modeling.
-  4.  **Assumptions:** (Refactored) Income, Assets, and Global Rates only.
-  5.  **Strategies:** (Future) RMDs and Solvency Waterfalls.
+  1. **Dashboard:** High-level metrics (Net Worth, Liquidity) - *Phase 4*.
+  2. **Expenses:** Categorized monthly obligations - *Phase 3*.
+  3. **Loans & Debt:** Advanced liability management and payoff modeling - *Phase 2 (Complete)*.
+  4. **Assumptions:** Income, Assets, and Global Rates - *Phase 1 (Complete)*.
+- **Data Awareness:** The sidebar must display a "Data as of: [Date]" footer derived from the active scenario's timestamp.
 
----
+------
+
+
 
 # 2. Financial Modules
 
-## Module 1: Expenses Manager (New)
-- **Concept:** Granular tracking of monthly outflows, distinct from the "General Living" lump sum.
-- **Categorization:**
-  - **Bills:** Recurring fixed costs (Utilities, Subs, Insurance).
-    - *Subcategories:* Security, Internet, Cable, Water, Electric, Gas, Car Ins, Cell, Trash, Pet Ins, Subscriptions.
-  - **Home:** Property-related fixed costs.
-    - *Subcategories:* Property Tax, Home Insurance, HOA.
-  - **Living:** Variable lifestyle costs.
-    - *Subcategories:* General Living (Groceries/Dining), Landscaping/Housekeeping, Annual Fees (amortized).
-  - **Loans:** Read-Only summary.
-    - *Logic:* Aggregates the monthly payments defined in **Module 2**. Users cannot edit loan payments here; they must go to the Loans module.
 
-## Module 2: Loans & Debt Strategies (New)
-- **Concept:** A dedicated engine for modeling debt payoff with "Sub-scenarios" for extra payments.
 
-### 2.1 Fixed Rate Loans (Mortgage)
-- **Inputs:** Loan Name, Origination Date, Original Principal, Current Principal, Interest Rate, Required Monthly Payment.
-- **Amortization Engine:**
-  - Calculate monthly Interest/Principal schedule.
-  - **Highlight:** Visually indicate the row corresponding to the Current Date.
-- **Payoff Strategy (Sub-scenarios):**
-  - Users can create named "Payment Strategies" (e.g., "Aggressive Payoff", "Standard").
-  - **Input:** Users enter "Extra Principal Payment" into specific months in the amortization table.
-  - **Output:** Recalculate "Payoff Date" and "Total Interest Saved" dynamically.
 
-### 2.2 Revolving Loans (HELOC)
-- **Inputs:** Current Balance, Interest Rate, Planned Minimum Payment.
-- **Simulation Engine:**
-  - Calculate Interest = `Balance * (Rate / 12)`.
-  - Calculate Principal Paid = `Payment - Interest`.
-  - Project forward until Balance = 0.
-- **Payoff Strategy:**
-  - Similar to Fixed loans, allow named strategies to inject extra payments in specific months to see the impact on payoff time.
 
----
+## Module 1: Expenses Manager (Phase 3 Focus)
 
-## Module 3: Income & Assets (Refactored Assumptions)
+
+
+**Concept:** A dedicated module for granular tracking of monthly outflows, distinct from the "General Living" lump sum.
+
+
+
+### 1.1 Categories & Logic
+
+
+
+The system must support three distinct expense arrays. The logic engine aggregates these into a single "Monthly Burn" figure.
+
+1. **Bills:** Recurring fixed costs.
+   - *Standard Items:* Utilities, Internet/Cable, Cell Phone, Trash, Subscriptions, Pet Insurance, Security.
+2. **Home:** Property-related fixed costs.
+   - *Standard Items:* Property Tax, Home Insurance, HOA.
+3. **Living:** Variable lifestyle costs.
+   - *Standard Items:* General Living (Groceries/Dining), Landscaping/Housekeeping.
+
+
+
+### 1.2 Functionality
+
+
+
+- **CRUD Operations:** Users can Add, Edit, and Delete individual line items within these categories.
+- **Data Structure:** Each item is an object: `{ id, name, amount }`.
+
+------
+
+
+
+## Module 2: Loans & Debt Manager (Completed)
+
+
+
+**Concept:** A centralized hub for managing liabilities. Users create, configure, and model complex payoff strategies here.
+
+
+
+### 2.1 Loan Management (CRUD)
+
+
+
+- **Sidebar List:** Displays all loans in the scenario.
+- **Fail-Safe Selection:** If the currently selected loan is deleted, the view must automatically switch to the next available loan (or show a "No Accounts" state) to prevent UI crashes.
+- **Loan Types:**
+  - **Fixed (Mortgage/Auto):**
+    - *Inputs:* Principal, Interest Rate, Start Date, Term (Months).
+    - *Auto-Calculation:* Changing Principal, Rate, or Term **automatically calculates** the required "Monthly Payment" using the amortization formula (P⋅(1+r)n−1r(1+r)n).
+  - **Revolving (CC/HELOC):**
+    - *Inputs:* Current Balance, Interest Rate, Planned Monthly Payment.
+    - *Logic:* Payment is user-defined but must be ≥ Interest to prevent negative amortization.
+
+
+
+### 2.2 Advanced Strategy Engine
+
+
+
+- **Strategy Architecture:**
+  - A Loan can hold multiple named "Strategies" (sub-scenarios).
+  - **Base Strategy:** A protected "Minimum Payment" strategy that **cannot be deleted**.
+  - **Custom Strategies:** Users can Create (name) and Delete custom strategies (e.g., "Aggressive Payoff").
+- **Amortization Grid Interactions:**
+  - **Extra Principal Column:** Users can input one-time lump sums into specific months.
+  - **Drag-to-Fill (Excel-Style):** Users can select an "Extra Principal" cell and drag the handle down to batch-apply that value to a range of future months.
+  - **Performance:** This batch action must be handled by a specific `batchUpdateLoanPayments` reducer to avoid performance penalties from multiple re-renders.
+
+------
+
+
+
+## Module 3: Assumptions (Income & Assets)
+
+
+
+**Concept:** Manages the "Top of the Funnel" inputs (Inflow) and Starting Capital.
+
+
 
 ### 3.1 Income Logic
+
+
+
 - **Active Income:** Net Salary inputs (Tax logic bypassed for Salary).
-- **Work Status:** Year-by-Year slider (0.0 to 1.0) impacting Salary.
+- **Work Status:** Year-by-Year slider (0.0 to 1.0) impacting Salary availability.
 - **Passive Income:** SS/Pension (Gross) - subject to Tax Tiers.
 
+
+
 ### 3.2 Asset Logic
+
+
+
 - **Joint Account:** The "Hub" for surplus/deficits.
 - **Retirement Accounts:** 401k/IRA balances growing at market rates.
-- **Property Value:** Grows by inflation; crucial for LTV calculations in Module 4.
+- **Property Value:** Grows by inflation; crucial for LTV calculations in Solvency Logic.
+- **Global Rates:** User-defined General Inflation, Medical Inflation, and Market Returns (Initial/Terminal).
 
----
+------
 
-## Module 4: Net Worth & Solvency (The "Brain")
-*Note: This runs 'behind the scenes' to power the Dashboard.*
 
-### 4.1 The Cash Flow Waterfall
-1.  **Income Inflow:** Salary + Bonus + Passive.
-2.  **Mandatory Outflow:** Expenses (Module 1) + Loan Payments (Module 2).
-3.  **Net Result:**
-    - *Surplus:* Adds to Joint Account.
-    - *Deficit:* Triggers Withdrawal Logic.
 
-### 4.2 Withdrawal Logic (Deficit Funding)
-1.  **Liquidity Buffer Check:** Ensure Joint Account > Target ($50k).
-2.  **Source Order:**
-    - 1st: Inherited IRA (until depleted).
-    - 2nd: 401k/403b (Tax Gross-up applied).
+# 3. The Financial Engine (Phase 4 Logic)
 
-### 4.3 Solvency Triggers
+
+
+**Concept:** This runs 'behind the scenes' to power the Dashboard visualizations.
+
+
+
+### 3.1 Cash Flow Waterfall
+
+
+
+1. **Income Inflow:** Salary (adjusted by Work Status) + Bonus + Passive.
+2. **Mandatory Outflow:** Expenses (Module 1) + Loan Payments (Module 2).
+3. **Net Result:**
+   - *Surplus:* Adds to Joint Account.
+   - *Deficit:* Triggers Withdrawal Logic.
+
+
+
+### 3.2 Withdrawal Logic (Deficit Funding)
+
+
+
+1. **Liquidity Buffer Check:** Ensure Joint Account > Target ($50k).
+2. **Source Order:**
+   - 1st: Inherited IRA (until depleted).
+   - 2nd: 401k/403b (Tax Gross-up applied).
+
+
+
+### 3.3 Solvency Triggers
+
+
+
 - **Reverse Mortgage:** Triggered if Retirement Balances are critical.
 - **Liquidation:** Triggered if LTV > 66% (Sell Home, Rent).
