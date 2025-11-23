@@ -1,97 +1,176 @@
 # BA Financial Planning - Architecture Overview
 
-**Version:** 7.0 ("Stay HGV" Scenario)
-**Date:** November 22, 2025
-**Status:** Phase 1 (Data Layer & Scaffold)
+**Version:** 8.0
+**Date:** November 23, 2025
+**Status:** Phase 2 Design (Scenario-Based Architecture & Advanced Modules)
 
 ---
 
 ## 1. High-Level Design Pattern
-The application follows a **Data-Driven Single Page Application (SPA)** architecture. It enforces a strict separation of concerns between the **Data State** (Truth), the **Calculation Engine** (Logic), and the **User Interface** (Presentation).
+The application follows a **Scenario-Based, Data-Driven Single Page Application (SPA)** architecture.
 
-### Core Philosophy
-1.  **Single Source of Truth:** The entire financial model is defined by a single JSON object (`hgv_data.json`).
-2.  **Deterministic Calculation:** Given the same Input JSON, the Logic Engine will always produce the exact same Output (Cash Flow & Net Worth arrays).
-3.  **Snapshot-Based History:** "What-if" scenarios are handled by deep-cloning the state and saving it to an internal history array, allowing for instant time-travel and comparison.
-
----
-
-## 2. Technology Stack
-
-### Frontend Framework
-* **Core:** React 19 (Functional Components, Hooks).
-* **Build Tool:** Vite 5 (Fast HMR, ES Modules).
-* **Language:** JavaScript (ES6+).
-
-### Styling & UI
-* **CSS Framework:** Tailwind CSS 3 (Utility-first, Responsive).
-* **Icons:** Lucide-React (Lightweight SVG icons).
-* **Visualization:** Recharts (Composed Charts for projections).
-
-### Data & Logic Libraries
-* **State Management:** React Context API (`DataContext`).
-* **Data Manipulation:** `lodash` (specifically `cloneDeep` for immutability and `set` for deep path updates).
-* **Date Handling:** `date-fns` (for timeline generation).
-* **Math:** Native JS (floating point handling managed via specific rounding utilities).
+* **Scenario-First Data Model:** The application no longer operates on a single flat data set. Instead, it manages a registry of **Scenarios**. The user always views and edits the "Active Scenario".
+* **Separation of Concerns:**
+    * **Data Layer:** `DataContext` manages the `appState` (Scenario Registry).
+    * **Logic Layer:** Pure JavaScript engines (`financial_engine.js`, `loan_math.js`) process raw data into projection arrays.
+    * **View Layer:** React components allow data entry and visualization (Charts/Tables).
+* **Granular "Strategies":** For complex modules like Loans, the data model supports "Sub-scenarios" (Strategies) to allow A/B testing of different payment plans without duplicating the entire scenario.
 
 ---
 
-## 3. Data Architecture
+## 2. Data Architecture
 
-### 3.1 The Data Context (`src/context/DataContext.jsx`)
-The application is wrapped in a global `DataProvider` that exposes:
-* `data`: The current active JSON configuration.
-* `updateData(path, value)`: A universal setter that accepts a dot-notation path (e.g., `'income.brian.netSalary'`) and updates the state immutably.
-* `saveSnapshot(name)`: Pushes the current state into a `history` array.
-* `loadSnapshot(id)`: Replaces the current state with a saved version.
+### 2.1 The Global Store (`appState`)
+The root `hgv_data.json` now acts as a container for multiple scenarios.
 
-### 3.2 The Data Model (`hgv_data.json`)
-The schema is divided into specific domains:
-* **`meta`**: Versioning and scenario tags.
-* **`globals`**: Economic drivers (Inflation, Market Returns, Tax Tiers).
-* **`demographics`**: Birthdates, Social Security timing.
-* **`income`**: Salary baselines, growth settings, work status sliders.
-* **`expenses`**: Monthly burn rate and annual lumpy expenses.
-* **`assets`**: Starting balances and allocation strategies.
-* **`loans`**: Mortgage and HELOC terms.
+```json
+{
+  "meta": {
+    "version": "8.0",
+    "activeScenarioId": "scen_default"
+  },
+  "scenarios": {
+    "scen_default": {
+      "id": "scen_default",
+      "name": "Current Home HGV",
+      "created": "2025-11-23T08:00:00Z",
+      "lastUpdated": "2025-11-23T10:00:00Z",
+      "data": {
+        "globals": {
+           "inflation": { "general": 0.025, "medical": 0.05 },
+           "market": { "initial": 0.07, "terminal": 0.035 }
+        },
+        "income": {
+           "brian": { "netSalary": 168000, "workStatus": { "2026": 1.0 } },
+           "andrea": { "netSalary": 105000, "workStatus": { "2026": 1.0 } }
+        },
+        "assets": {
+           "joint": 99000,
+           "retirement401k": 950000
+        },
+        "expenses": {
+           "bills": [ { "id": "e1", "name": "Internet", "amount": 62 } ],
+           "home": [ { "id": "e2", "name": "Property Tax", "amount": 1472 } ],
+           "living": [ { "id": "e3", "name": "General Living", "amount": 4500 } ]
+        },
+        "loans": {
+           "mortgage_1": {
+              "id": "mortgage_1",
+              "name": "Primary Mortgage",
+              "type": "fixed",
+              "inputs": {
+                 "principal": 801000,
+                 "rate": 0.0325,
+                 "payment": 3489,
+                 "startDate": "2019-10-01"
+              },
+              "activeStrategyId": "base",
+              "strategies": {
+                 "base": { "name": "Minimum Payment", "extraPayments": {} },
+                 "aggressive": { "name": "Payoff 2030", "extraPayments": { "2026-05": 5000 } }
+              }
+           }
+        }
+      }
+    }
+  }
+}
+```
 
----
+### 2.2 Data Context Actions (`src/context/DataContext.jsx`)
 
-## 4. The Logic Engine (Planned: `src/utils/financial_engine.js`)
 
-To keep components pure, all financial math is offloaded to a utility engine. This engine runs on every significant data change.
 
-### 4.1 Calculation Pipeline
-1.  **Timeline Generator:** Creates an array of 360+ months (30 years) starting from `globals.startDate`.
-2.  **Amortization Module:** Calculates monthly Principal, Interest, and Remaining Balance for Mortgage and HELOC.
-3.  **Income & Tax Module:**
-    * Applies inflation to salaries.
-    * Calculates 401k contributions (capped by IRS limits).
-    * Determines Net Income after taxes.
-4.  **Cash Flow Aggregator:** `Net Income - Expenses - Debt Service = Monthly Surplus/Deficit`.
-5.  **Asset Simulator:**
-    * Distributes Surplus to Joint Accounts.
-    * Handles Deficit funding (Waterfall: Cash -> Taxable -> Tax-Advantaged).
-    * Applies Growth Rates (Market Return) to balances.
+- **`switchScenario(scenarioId)`**: Updates `meta.activeScenarioId`. The UI immediately re-renders with the new data set.
+- **`createScenario(name)`**:
+  1. Deep clones the currently active scenario.
+  2. Generates a new ID (e.g., `scen_timestamp`).
+  3. Updates the name and metadata.
+  4. Sets it as active.
+- **`updateScenarioData(path, value)`**:
+  1. Target: `scenarios[activeScenarioId].data`.
+  2. Action: Uses `lodash.set` to update the specific field.
+  3. **Timestamp:** Updates `lastUpdated` to `new Date().toISOString()`.
+- **`addLoanStrategy(loanId, name)`**:
+  1. Adds a new key to the specific loan's `strategies` object.
+  2. Copies the "base" empty structure.
 
----
+------
 
-## 5. Directory Structure
 
-```text
+
+## 3. Directory Structure
+
 src/
-├── assets/             # Static assets (images, svgs)
 ├── context/
-│   └── DataContext.jsx # Global State Management
+│   └── DataContext.jsx     # Handles Multi-Scenario State & Timestamping
 ├── data/
-│   └── hgv_data.json   # Initial State / Seed Data
+│   └── hgv_data.json       # Initial State (Default Scenario)
 ├── utils/
-│   └── financial_engine.js # (Planned) Core Math Logic
+│   ├── financial_engine.js # (Pending) Core Cash Flow & Net Worth Logic
+│   └── loan_math.js        # (Pending) Amortization & Revolving Debt Math
 ├── views/
-│   ├── dashboard.jsx   # Main Visualization
-│   ├── assumptions.jsx # Input Forms & Controls
-│   ├── loans.jsx       # Debt Drill-down
-│   └── cashflow.jsx    # Income/Expense Tables
-├── components/         # Reusable UI elements (Cards, Tables, Inputs)
-├── App.jsx             # Layout & Routing (Sidebar + Content Area)
-└── main.jsx            # Entry Point
+│   ├── dashboard.jsx       # Results & Charts
+│   ├── expenses.jsx        # (New) Categorized Monthly Expense Editor
+│   ├── loans.jsx           # (New) Loan List & Amortization Strategy View
+│   └── assumptions.jsx     # (Refactored) Income, Assets, Global Rates
+├── components/
+│   ├── Sidebar.jsx         # Includes Scenario Selector Dropdown
+│   ├── Layout.jsx          # Wrapper showing "Data as of: [Date]"
+│   ├── NumberInput.jsx     # Helper for decimal inputs
+│   └── LoanDetail.jsx      # (New) Amortization Table Component
+└── App.jsx                 # Routing & Layout Composition
+
+## 4. Technical Implementation Logic
+
+
+
+
+
+### 4.1 Timestamping & Versioning
+
+
+
+- **Requirement:** Display "Data as of: [Date]" on every screen.
+- **Implementation:** The `Layout` component reads `scenarios[activeID].lastUpdated`.
+- **Trigger:** Every call to `updateData` automatically refreshes this timestamp.
+
+
+
+### 4.2 Expenses Module
+
+
+
+- **Structure:** Three arrays (`bills`, `home`, `living`).
+- **Interaction:**
+  - **Edit:** Users edit the `amount` of existing rows.
+  - **Add/Remove:** Users can push new objects `{id, name, amount}` to these arrays.
+- **Integration:** The `financial_engine.js` aggregates these arrays (summing `amount`) to determine the monthly "Base Expense" line item in the cash flow.
+
+
+
+### 4.3 Loans Module (The Strategy Engine)
+
+
+
+- **State:** Each Loan has multiple `strategies`.
+- **Amortization Calculation:**
+  - Input: `inputs` (Principal, Rate) + `strategies[active].extraPayments`.
+  - Logic: Iterates month-by-month.
+  - `ExtraPayment` Lookup: Checks if `YYYY-MM` exists in the `extraPayments` hash map for the current step.
+- **UI Interaction:**
+  - The Amortization Table allows direct input into an "Extra Principal" column.
+  - **On Change:** Updates `strategies[active].extraPayments[currentMonth]`.
+  - **Effect:** Re-runs the calculation immediately to show the new Payoff Date.
+
+
+
+### 4.4 Dashboard (Visualization)
+
+
+
+- **Data Source:** `financial_engine.js` output.
+- **Responsiveness:**
+  - Changing an Assumption re-runs the Engine.
+  - Switching Scenarios re-runs the Engine with the new dataset.
+- **Libraries:** `recharts` for Area Charts (Net Worth) and Composed Charts (Cash Flow).

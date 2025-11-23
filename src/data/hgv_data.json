@@ -1,101 +1,86 @@
 {
   "meta": {
-    "version": "7.0",
-    "scenario": "Stay HGV - Final Architecture",
-    "created": "2025-11-22"
+    "version": "8.0",
+    "activeScenarioId": "scen_default"
   },
-  "history": [],
-  "globals": {
-    "startDate": "2025-11-01",
-    "inflation": {
-      "general": 0.025,
-      "medical": 0.05,
-      "propertyTax": 0.02
-    },
-    "market": {
-      "initial": 0.07,
-      "terminal": 0.035,
-      "taperEndAge": 85
-    },
-    "taxTiers": {
-      "working": 0.30,
-      "partTime": 0.25,
-      "retiredPreSS": 0.20,
-      "retiredPostSS": 0.17
-    },
-    "limits": {
-      "irs401kBase": 30000,
-      "rmdStartAge": 75
-    },
-    "strategy": {
-      "bufferBase": 50000,
-      "liquidationLTV": 0.66,
-      "reverseMtgRate": 0.07
-    }
-  },
-  "demographics": {
-    "brian": { "dob": "1966-09-15", "ssStartAge": 67, "ssAnnualGross": 42000 },
-    "andrea": { "dob": "1965-02-01", "ssStartAge": 67, "ssAnnualGross": 36000, "pensionAnnualGross": 50000 }
-  },
-  "income": {
-    "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10 },
-    "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10 },
-    "annualBonusNet": 14000,
-    "workStatus": {
-      "2025": { "brian": 1.0, "andrea": 1.0 },
-      "2026": { "brian": 1.0, "andrea": 1.0 },
-      "2027": { "brian": 1.0, "andrea": 1.0 },
-      "2028": { "brian": 1.0, "andrea": 0.6 },
-      "2029": { "brian": 1.0, "andrea": 0.6 },
-      "2030": { "brian": 0.6, "andrea": 0.0 }
-    }
-  },
-  "expenses": {
-    "monthly": {
-      "propertyTax": 1472,
-      "hoa": 244,
-      "insurance": 456,
-      "utilities": 472,
-      "telecomm": 450,
-      "living": 4500,
-      "medical": 500
-    },
-    "annual": [
-      { "name": "Vacation", "amount": 15000, "month": 6 },
-      { "name": "Car Reg", "amount": 1200, "month": 1 },
-      { "name": "Dues", "amount": 450, "month": 1 }
-    ]
-  },
-  "assets": {
-    "joint": 99000,
-    "inheritedIRA": 376000,
-    "retirement401k": 950000,
-    "homeValue": 1450000,
-    "iraSchedule": {
-      "2026": 0.10,
-      "2027": 0.10,
-      "2028": 0.10,
-      "2029": 0.15,
-      "2030": 0.15,
-      "2031": 0.20,
-      "2032": 0.20,
-      "2033": 1.0
-    }
-  },
-  "loans": {
-    "mortgage": {
-      "principal": 801000,
-      "rate": 0.0325,
-      "termMonths": 360,
-      "startDate": "2019-10-01",
-      "payment": 3486
-    },
-    "heloc": {
-      "balance": 160200,
-      "rate": 0.0825,
-      "payment": 1350,
-      "extraPayments": {
-        "2026-03": 5000
+  "scenarios": {
+    "scen_default": {
+      "id": "scen_default",
+      "name": "Current Home HGV",
+      "created": "2025-11-23T06:00:00Z",
+      "lastUpdated": "2025-11-23T06:00:00Z",
+      "data": {
+        "globals": {
+          "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02 },
+          "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
+          "taxTiers": { "working": 0.30, "retired": 0.20 }
+        },
+        "income": {
+          "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10 },
+          "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10 },
+          "workStatus": {
+            "2025": { "brian": 1.0, "andrea": 1.0 },
+            "2026": { "brian": 1.0, "andrea": 1.0 },
+            "2027": { "brian": 1.0, "andrea": 1.0 },
+            "2028": { "brian": 1.0, "andrea": 0.6 },
+            "2029": { "brian": 1.0, "andrea": 0.6 },
+            "2030": { "brian": 0.6, "andrea": 0.0 }
+          }
+        },
+        "assets": {
+          "joint": 99000,
+          "inheritedIRA": 376000,
+          "retirement401k": 950000,
+          "homeValue": 1450000
+        },
+        "expenses": {
+          "bills": [
+            { "id": "b1", "name": "Utilities", "amount": 472 },
+            { "id": "b2", "name": "Telecom/Subs", "amount": 450 },
+            { "id": "b3", "name": "Medical (Pocket)", "amount": 500 }
+          ],
+          "home": [
+            { "id": "h1", "name": "Property Tax", "amount": 1472 },
+            { "id": "h2", "name": "HOA", "amount": 244 },
+            { "id": "h3", "name": "Insurance", "amount": 456 }
+          ],
+          "living": [
+            { "id": "l1", "name": "General Living", "amount": 4500 }
+          ]
+        },
+        "loans": {
+          "mortgage": {
+            "id": "mortgage",
+            "name": "Primary Mortgage",
+            "type": "fixed",
+            "inputs": {
+              "principal": 801000,
+              "rate": 0.0325,
+              "payment": 3486,
+              "startDate": "2019-10-01",
+              "termMonths": 360
+            },
+            "activeStrategyId": "base",
+            "strategies": {
+              "base": { "name": "Minimum Payment", "extraPayments": {} }
+            }
+          },
+          "heloc": {
+            "id": "heloc",
+            "name": "Home Equity Line",
+            "type": "revolving",
+            "inputs": {
+              "balance": 160200,
+              "rate": 0.0825,
+              "payment": 1350
+            },
+            "activeStrategyId": "base",
+            "strategies": {
+              "base": { "name": "Minimum Payment", "extraPayments": {} },
+              "aggressive": { "name": "Aggressive Payoff", "extraPayments": { "2026-03": 5000 } }
+            }
+          }
+        }
       }
     }
   }
