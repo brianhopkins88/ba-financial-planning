@@ -4,16 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of upgrade to v8 requirements &amp; architecture with smoke test sat.">
-      <change afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/utils/loan_math.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/views/loans.jsx" afterDir="false" />
+    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of upgrade to v8.1 architecture and requirements">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/architecture.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/architecture.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/work_context.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/context/DataContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/context/DataContext.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,7 +79,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763908252302</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Commit of upgrade to v8.1 architecture and requirements">
+      <option name="closed" value="true" />
+      <created>1763939259015</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1763939259015</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -104,6 +104,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Commit of initial working code" />
     <MESSAGE value="Commit of upgrade to v8 requirements &amp; architecture with smoke test sat." />
-    <option name="LAST_COMMIT_MESSAGE" value="Commit of upgrade to v8 requirements &amp; architecture with smoke test sat." />
+    <MESSAGE value="Commit of upgrade to v8.1 architecture and requirements" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit of upgrade to v8.1 architecture and requirements" />
   </component>
 </project>
