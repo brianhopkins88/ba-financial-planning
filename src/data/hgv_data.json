@@ -1,7 +1,40 @@
 {
   "meta": {
-    "version": "8.0",
+    "version": "8.5",
     "activeScenarioId": "scen_default"
+  },
+  "profiles": {
+    "prof_initial": {
+      "id": "prof_initial",
+      "name": "Initial Expenses",
+      "type": "expenses",
+      "created": "2025-11-25T12:00:00Z",
+      "data": {
+        "activeProfileId": "prof_initial",
+        "bills": [
+          { "id": "b1", "name": "AT&T Internet", "amount": 62 },
+          { "id": "b2", "name": "AT&T Cable", "amount": 228 },
+          { "id": "b3", "name": "Car Insurance", "amount": 520 },
+          { "id": "b4", "name": "Cell Phone", "amount": 160 },
+          { "id": "b5", "name": "Pet Insurance", "amount": 120 },
+          { "id": "b6", "name": "Subscriptions", "amount": 250 }
+        ],
+        "home": [
+          { "id": "h1", "name": "Property Tax", "amount": 1472 },
+          { "id": "h2", "name": "Home Owners Insurance", "amount": 457 },
+          { "id": "h3", "name": "HOA", "amount": 244 },
+          { "id": "h4", "name": "Security System", "amount": 67 },
+          { "id": "h5", "name": "Water", "amount": 142 },
+          { "id": "h6", "name": "Electric", "amount": 78 },
+          { "id": "h7", "name": "Gas", "amount": 45 },
+          { "id": "h8", "name": "Trash", "amount": 45 },
+          { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
+        ],
+        "living": [
+          { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
+        ]
+      }
+    }
   },
   "scenarios": {
     "scen_default": {
@@ -16,6 +49,7 @@
           "taxTiers": { "working": 0.30, "retired": 0.20 }
         },
         "income": {
+          "activeProfileId": null,
           "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10 },
           "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10 },
           "workStatus": {
@@ -34,18 +68,28 @@
           "homeValue": 1450000
         },
         "expenses": {
+          "activeProfileId": "prof_initial",
           "bills": [
-            { "id": "b1", "name": "Utilities", "amount": 472 },
-            { "id": "b2", "name": "Telecom/Subs", "amount": 450 },
-            { "id": "b3", "name": "Medical (Pocket)", "amount": 500 }
+            { "id": "b1", "name": "AT&T Internet", "amount": 62 },
+            { "id": "b2", "name": "AT&T Cable", "amount": 228 },
+            { "id": "b3", "name": "Car Insurance", "amount": 520 },
+            { "id": "b4", "name": "Cell Phone", "amount": 160 },
+            { "id": "b5", "name": "Pet Insurance", "amount": 120 },
+            { "id": "b6", "name": "Subscriptions", "amount": 250 }
           ],
           "home": [
             { "id": "h1", "name": "Property Tax", "amount": 1472 },
-            { "id": "h2", "name": "HOA", "amount": 244 },
-            { "id": "h3", "name": "Insurance", "amount": 456 }
+            { "id": "h2", "name": "Home Owners Insurance", "amount": 457 },
+            { "id": "h3", "name": "HOA", "amount": 244 },
+            { "id": "h4", "name": "Security System", "amount": 67 },
+            { "id": "h5", "name": "Water", "amount": 142 },
+            { "id": "h6", "name": "Electric", "amount": 78 },
+            { "id": "h7", "name": "Gas", "amount": 45 },
+            { "id": "h8", "name": "Trash", "amount": 45 },
+            { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
           ],
           "living": [
-            { "id": "l1", "name": "General Living", "amount": 4500 }
+            { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
           ]
         },
         "loans": {
@@ -53,6 +97,7 @@
             "id": "mortgage",
             "name": "Primary Mortgage",
             "type": "fixed",
+            "active": true,
             "inputs": {
               "principal": 801000,
               "rate": 0.0325,
@@ -69,10 +114,12 @@
             "id": "heloc",
             "name": "Home Equity Line",
             "type": "revolving",
+            "active": true,
             "inputs": {
               "balance": 160200,
               "rate": 0.0825,
-              "payment": 1350
+              "payment": 1350,
+              "startDate": "2025-01-01"
             },
             "activeStrategyId": "base",
             "strategies": {

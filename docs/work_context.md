@@ -1,4 +1,94 @@
 # This file contains notes about the work that has happened so far
+## 2025-11-26: Session 7 (Global Date Engine & Profile Managers)
+
+**Status:** Phase 3 (Cash Flow) Complete. Phase 4 (Financial Engine) Ready.
+**Focus:** Implementing the "Time-Machine" date navigation and robust Time-Phased Profile management for Income and Expenses.
+
+### **Accomplishments**
+
+- **Global Date Engine (App Shell):**
+  - Implemented `globals.timing` in `DataContext` to define a Scenario Start Date.
+  - Added `simulationDate` state to track the "Current Model Month".
+  - **Navigation:** Built a "Press & Hold" accelerator in the Top Bar to rapidly traverse months, quarters, and years.
+- **Income Manager (`views/income.jsx`):**
+  - Created a dedicated module for Income & Work Status.
+  - Implemented **Work Status Trajectory** that automatically extends 10 years from the scenario start.
+  - Added full Profile Management (Save, Rename, Delete, Time-Phased Activation).
+- **Expense Manager Refactor:**
+  - **Accordion UI:** Grouped bills into collapsible sections (Recurring, Home, Living) to save space.
+  - **Profile Manager:** Renamed from "Timeline" to "Profile Manager".
+  - **Smart Saving:** Added distinct "Save to Current Profile" vs "Save as New" actions.
+  - **Validation:** Implemented logic to prevent deleting/disabling the only active profile covering the current date.
+- **Architecture & Data:**
+  - Updated `DataContext` with `updateProfile` and `renameProfile` actions.
+  - Refactored the internal data structure to support a `profileSequence` array for time-based switching.
+  - Updated *Requirements Specification* to v8.6.
+
+### **Next Steps**
+
+- **Phase 4 (Financial Engine):** Build the core logic (`financial_engine.js`) to aggregate these time-phased profiles into a Net Worth projection.
+- **Dashboard:** Connect the visual charts to the output of the Financial Engine.
+
+
+## 2025-11-25: Session 6 (Cash Flow Manager & Profile Logic)
+
+**Status:** Phase 3 (Cash Flow) Functional. UI Refinement Pending. **Focus:** Implementing the "Mix-and-Match" Profile system and the interactive Cash Flow view.
+
+### **Accomplishments**
+
+
+
+- **Data Architecture Update (v8.5):**
+  - Added `activeProfileId` tracking to Income and Expense modules.
+  - Added `active` boolean flag to Loans to allow "soft deletes" or modeling future debts.
+  - Implemented `deleteProfile` and `saveScenario` actions in Context.
+- **Cash Flow Manager (`views/expenses.jsx`):**
+  - Built the dual-tab interface for **Income** and **Expenses**.
+  - **Profile Engine:** Users can now Save, Load, and Delete specific configuration profiles (e.g., "Retirement Lean" expenses).
+  - **Debt Injection:** Automatically calculates and injects "Active Debt" payments into the monthly burn rate if the loan Start Date is in the past.
+  - **Visuals:** Added real-time "Net Cash Flow" bar and solvency check.
+- **Loans Module Updates:**
+  - Added **Active/Inactive** toggle to loan headers.
+  - Ensured "Start Date" is always editable to support the Debt Injection logic.
+- **Bug Fixes:**
+  - Resolved layout issues where Expense Amount inputs were collapsing or missing.
+  - Fixed state mutation bugs in the Bill Update logic.
+
+
+
+### **Next Steps**
+
+
+
+- **UI Refactor (Expenses):** Redesign the expense lists into a **Vertical Accordion** layout (Expand/Hide) to improve readability of long descriptions.
+- **Date Logic Fix:** Remove the hardcoded "Jan 2025" display; ensure the view dynamically reflects the current model date (November 2025).
+- **Phase 4 (Dashboard):** Begin connecting the Financial Engine to the visual Dashboard.
+
+## 2025-11-25: Session 5 (Requirements & Architecture Refinement)
+
+Status: Phase 3 (Cash Flow) Design Complete.
+
+Focus: Redesigning the Expenses module to include Income and Profile-based "Mix-and-Match" modeling.
+
+### **Accomplishments**
+
+- **Requirements Update (v8.3):**
+  - Consolidated "Income" and "Expenses" into a single "Cash Flow Manager".
+  - Introduced "Profile Library" concept for independent saving/loading of Income/Expense configurations.
+  - Refined "Assets & Market Assumptions" (formerly Assumptions) to remove redundancy.
+- **Architecture Update (v8.3):**
+  - Updated Data Model to include a root `profiles` registry in `hgv_data.json`.
+  - Defined new Context Actions: `saveProfile`, `applyProfile`.
+  - Spec'd `views/expenses.jsx` as the hub for this new logic.
+
+### **Next Steps**
+
+- **Phase 3 Implementation:**
+  - Update `DataContext` to support the new `profiles` registry and actions.
+  - Build `views/expenses.jsx` with the tabbed Income/Expenses interface and Profile controls.
+
+
+
 ## 2025-11-23: Session 4 (App Shell & Advanced Loans)
 
 **Status:** Phase 2 (Loans) Finalized. Phase 3 (Expenses) Ready.
@@ -18,7 +108,7 @@
     * Consolidated all requirements into *Requirements Specification v8.2*.
     * Updated *Architecture Overview v8.2* to reflect the App Shell and Batch Update patterns.
 
-### **Current System State**
+### **Current System Strategy**
 * **Navigation:** Fully functional Sidebar with routing to Loans and Assumptions.
 * **Loans:** Complete. Supports Fixed/Revolving types, Auto-Calc, Multi-Strategy, and Bulk Editing.
 * **Pending:** The "Expenses" and "Dashboard" views are currently placeholders in the App Shell.
@@ -98,7 +188,6 @@
 * **Next Steps:**
     * **Scaffold `financial_engine.js`:** This is the core priority. We need the logic to process the inputs into monthly arrays (Cash Flow, Net Worth).
     * **Dashboard Visualization:** Connect `recharts` to the output of the financial engine.
-
 
 
 

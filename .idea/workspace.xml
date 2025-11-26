@@ -5,7 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of upgrade to v8.1 architecture and requirements">
+      <change afterPath="$PROJECT_DIR$/src/views/expenses.jsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/views/income.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/architecture.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/architecture.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/work_context.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/context/DataContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/context/DataContext.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/hgv_data.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/hgv_data.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/loans.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/loans.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -15,6 +25,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;brianhopkins88&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/brianhopkins88/ba-financial-planning.git&quot;,
+    &quot;accountId&quot;: &quot;5796fc82-96ea-4ed0-a8ed-17762a7a9447&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
 }</component>
@@ -87,7 +109,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763939259015</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="Commit of upgrade to v8.1 architecture and requirements">
+      <option name="closed" value="true" />
+      <created>1764075594428</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1764075594428</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
