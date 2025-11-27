@@ -1,4 +1,37 @@
 # This file contains notes about the work that has happened so far
+
+
+## 2025-11-26: Session 8 (Data Persistence, Future Planning & Requirements Freeze)
+
+Status: Phase 3 (Cash Flow) Complete. Requirements v9.0 Finalized.
+
+Focus: Implementing robust Data Persistence, the Future Expenses planning tool, and finalizing strict categorization rules for the Expense Manager.
+
+### **Accomplishments**
+
+- **Data Architecture & Persistence:**
+  - **Auto-Save:** Implemented `localStorage` persistence to prevent data loss on refresh.
+  - **Import/Export Engine:** Built a robust JSON handler that bundles **Linked Profiles** with the Scenario Data, ensuring full portability of plans.
+  - **Sidebar Upgrade:**
+    - Added **Global Actions Menu** (Export, Upload, Reset).
+    - Added **Rich Scenario Selector** with inline Rename, Clone, and Delete functions.
+- **Future Expenses Submodule:**
+  - Created a dedicated "One-Offs" planning tool within Expenses.
+  - **Features:** Data Entry Table, Auto-integration of Loan Extra Payments, Year/Month Grouping, and Bar Chart visualization.
+- **Expense Manager Overhaul (v9 Rules):**
+  - **Strict Categorization:** Implemented 4 distinct groups (Bills, Mortgage & Impounds, Home, Living) driven purely by the JSON structure (no auto-sorting code).
+  - **CRUD:** Enabled Add/Edit/Delete for all sub-categories, including Impounds.
+  - **Loan Visibility:** Fixed logic to ensure "Active" loans (like HELOCs) appear in the Debt Summary regardless of future start dates.
+- **Loan & Income Updates:**
+  - **Mortgage Type:** Added a specific "Mortgage" loan type.
+  - **Payoff Profiles:** Upgraded the strategy selector to a rich menu (Rename, Duplicate, Delete).
+  - **Bonuses:** Added Annual Bonus inputs (Amount/Month) to the Income module.
+
+### **Next Steps**
+
+- **Phase 4 (Financial Engine):** Develop the core `financial_engine.js` to aggregate all these finalized inputs into a monthly Net Worth projection.
+- **Dashboard:** Connect the engine outputs to the main Dashboard charts.
+
 ## 2025-11-26: Session 7 (Global Date Engine & Profile Managers)
 
 **Status:** Phase 3 (Cash Flow) Complete. Phase 4 (Financial Engine) Ready.
