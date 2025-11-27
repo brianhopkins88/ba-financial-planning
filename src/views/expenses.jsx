@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { Plus, Trash2, Save, Receipt, ChevronDown, ChevronRight, Calendar, CheckSquare, Square, CreditCard, Pencil, Copy, BarChart3, Table, List, DownloadCloud } from 'lucide-react';
-import { parseISO, isBefore, isAfter, startOfToday, format, addMonths, differenceInMonths, getYear, getMonth, isSameMonth } from 'date-fns';
+import { Plus, Trash2, Save, Receipt, ChevronDown, ChevronRight, Calendar, CheckSquare, Square, CreditCard, Pencil, Copy, BarChart3, Table, List, DownloadCloud, Palmtree, Settings, MoreHorizontal, TrendingUp } from 'lucide-react';
+import { parseISO, isBefore, isAfter, format, addMonths, differenceInMonths, getYear, getMonth, isSameMonth, startOfMonth, addYears } from 'date-fns';
+import { calculateFixedLoan, calculateRevolvingLoan } from '../utils/loan_math';
 
 // --- UTILITY COMPONENTS ---
 
@@ -68,10 +69,274 @@ const Accordion = ({ title, total, children, defaultOpen = false, onAdd }) => {
   );
 };
 
+// --- PROFILE MENU COMPONENT ---
+const ProfileMenu = ({ activeProfileName, onSave, onSaveAs, onToggleMgr, showMgr }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <div className="relative">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all shadow-sm"
+            >
+                <Settings size={14} />
+                <span>Profile Actions</span>
+                <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
+            </button>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)}></div>
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-30 overflow-hidden">
+                         <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                             Active: {activeProfileName}
+                         </div>
+                         <button onClick={() => { onSave(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                            <Save size={16} className="text-blue-600"/> Save Changes
+                         </button>
+                         <button onClick={() => { onSaveAs(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                            <Copy size={16} className="text-slate-500"/> Save as New Profile...
+                         </button>
+                         <div className="h-px bg-slate-100 my-1"></div>
+                         <button onClick={() => { onToggleMgr(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                            <Calendar size={16} className={showMgr ? "text-blue-600" : "text-slate-500"}/>
+                            {showMgr ? "Hide Profile Timeline" : "Manage Profile Timeline"}
+                         </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+// --- EXPENSE SUMMARY COMPONENT ---
+const ExpenseSummary = ({ activeScenario, simulationDate }) => {
+    const [expandedYear, setExpandedYear] = useState(null);
+
+    const summaryData = useMemo(() => {
+        const startYear = getYear(simulationDate);
+        const projectionYears = 35;
+        const inflationRate = activeScenario.data.globals.inflation.general || 0.025;
+        const brianBirthYear = activeScenario.data.income.brian.birthYear || 1966;
+
+        // 1. Pre-Calculate Loan Schedules (Correctly handling Payoff Dates)
+        const loanAnnualTotals = {}; // Structure: { "2026": { "heloc": { name: "HELOC", amount: 12000 } } }
+
+        Object.values(activeScenario.data.loans).forEach(loan => {
+            if (!loan.active) return;
+
+            const stratId = loan.activeStrategyId || 'base';
+            const strategy = loan.strategies?.[stratId] || { extraPayments: {} };
+
+            // Run the actual math engine to get the schedule
+            let result;
+            if (loan.type === 'revolving') {
+                result = calculateRevolvingLoan(loan.inputs, strategy.extraPayments);
+            } else {
+                // Treat Mortgage and Fixed the same for amortization
+                result = calculateFixedLoan(loan.inputs, strategy.extraPayments);
+            }
+
+            // Aggregate payments by calendar year
+            result.schedule.forEach(row => {
+                const y = row.date.split('-')[0]; // Extract "2026" from "2026-02"
+
+                if (!loanAnnualTotals[y]) loanAnnualTotals[y] = {};
+                if (!loanAnnualTotals[y][loan.id]) {
+                    loanAnnualTotals[y][loan.id] = { name: loan.name, amount: 0 };
+                }
+
+                // Sum actual payment (Principal + Interest + Extra)
+                loanAnnualTotals[y][loan.id].amount += row.payment;
+            });
+        });
+
+        // 2. Base Recurring Costs (Annualized)
+        const calcAnnual = (arr) => arr.reduce((sum, i) => sum + (i.amount || 0), 0) * 12;
+        const baseBills = calcAnnual(activeScenario.data.expenses.bills);
+        const baseHome = calcAnnual(activeScenario.data.expenses.home);
+        const baseLiving = calcAnnual(activeScenario.data.expenses.living);
+        const baseImpounds = calcAnnual(activeScenario.data.expenses.impounds);
+
+        const data = [];
+
+        for (let i = 0; i < projectionYears; i++) {
+            const year = startYear + i;
+            const inflationMult = Math.pow(1 + inflationRate, i);
+            const brianAge = year - brianBirthYear;
+
+            // A. Inflated Recurring Expenses
+            const recurring = (baseBills + baseHome + baseLiving + baseImpounds) * inflationMult;
+
+            // B. Loans (Lookup from pre-calculated map)
+            let loanTotal = 0;
+            const loanDetails = [];
+            const yearLoans = loanAnnualTotals[String(year)];
+
+            if (yearLoans) {
+                Object.values(yearLoans).forEach(l => {
+                    if (l.amount > 0) {
+                        loanTotal += l.amount;
+                        loanDetails.push(l);
+                    }
+                });
+            }
+
+            // C. One-Offs
+            const oneOffs = activeScenario.data.expenses.oneOffs
+                .filter(item => item.date.startsWith(String(year)))
+                .map(item => ({ name: item.name, amount: item.amount }));
+            const oneOffTotal = oneOffs.reduce((sum, item) => sum + item.amount, 0);
+
+            // D. Fun Money Rules
+            let funMoneyTotal = 0;
+            let bracketLabel = "";
+            const brackets = activeScenario.data.expenses.retirementBrackets || {};
+
+            // Check which bracket applies (65, 70, 75, 80, 85, 90)
+            const activeBracket = [90, 85, 80, 75, 70, 65].find(b => brianAge >= b && brianAge < b + 5);
+            if (activeBracket) {
+                 funMoneyTotal = brackets[activeBracket] || 0;
+                 bracketLabel = `Age ${activeBracket}-${activeBracket+4} Rule`;
+            }
+
+            const total = recurring + loanTotal + oneOffTotal + funMoneyTotal;
+
+            data.push({
+                year,
+                brianAge,
+                total,
+                breakdown: {
+                    recurring,
+                    loans: loanTotal,
+                    loanDetails,
+                    planned: oneOffTotal,
+                    plannedDetails: oneOffs,
+                    funMoney: funMoneyTotal,
+                    funMoneyLabel: bracketLabel
+                }
+            });
+        }
+        return data;
+    }, [activeScenario, simulationDate]);
+
+    // Fixed scale max
+    const FIXED_MAX = 300000;
+
+    return (
+        <div className="bg-white p-4">
+
+            {/* BAR CHART */}
+            <div className="h-40 flex items-end gap-1 mb-6 border-b border-slate-100 pb-2 overflow-x-auto relative">
+                {/* Horizontal Grid Line for 300k Max */}
+                <div className="absolute top-0 left-0 right-0 border-t border-slate-200 border-dashed pointer-events-none">
+                     <span className="text-[9px] text-slate-400 absolute right-0 -top-4">Max: $300k</span>
+                </div>
+
+                {summaryData.map((d, i) => {
+                    // Capped percentage for visual bar, but track if it exceeds
+                    const rawPct = (d.total / FIXED_MAX) * 100;
+                    const height = Math.min(rawPct, 100);
+                    const isOverflow = rawPct > 100;
+
+                    return (
+                        <div key={d.year} className="flex-1 min-w-[20px] flex flex-col justify-end group relative h-full">
+                             <div
+                                className={`rounded-t w-full transition-colors relative ${isOverflow ? 'bg-red-500' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                                style={{ height: `${height}%`, minHeight: '4px' }}
+                             >
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none">
+                                    <div className="font-bold">{d.year} (Age {d.brianAge})</div>
+                                    <div>${Math.round(d.total/1000)}k</div>
+                                    {isOverflow && <div className="text-red-300 text-[9px] font-bold">Exceeds Scale</div>}
+                                </div>
+                             </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* DATA TABLE */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="grid grid-cols-12 bg-slate-50 text-xs font-bold text-slate-500 uppercase py-2 px-4 border-b border-slate-200">
+                    <div className="col-span-2">Year</div>
+                    <div className="col-span-2">Age</div>
+                    <div className="col-span-6 text-right">Total Projected</div>
+                    <div className="col-span-2 text-center">Expand</div>
+                </div>
+                <div className="divide-y divide-slate-100">
+                    {summaryData.map(row => (
+                        <div key={row.year} className="bg-white">
+                            <div className="grid grid-cols-12 py-2 px-4 text-sm items-center hover:bg-slate-50 transition-colors">
+                                <div className="col-span-2 font-bold text-slate-700">{row.year}</div>
+                                <div className="col-span-2 text-slate-500">{row.brianAge}</div>
+                                <div className="col-span-6 text-right font-mono font-bold text-emerald-600">${row.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                <div className="col-span-2 text-center">
+                                    <button
+                                        onClick={() => setExpandedYear(expandedYear === row.year ? null : row.year)}
+                                        className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                                    >
+                                        {expandedYear === row.year ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* EXPANDED DETAILS */}
+                            {expandedYear === row.year && (
+                                <div className="bg-slate-50 px-8 py-3 text-xs border-t border-slate-100 space-y-2 animate-in slide-in-from-top-1 duration-200">
+                                    <div className="flex justify-between border-b border-slate-200 pb-1">
+                                        <span className="text-slate-500">Recurring (Inflation Adjusted)</span>
+                                        <span className="font-mono">${Math.round(row.breakdown.recurring).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-slate-200 pb-1">
+                                        <span className="text-slate-500">Loan Payments</span>
+                                        <span className="font-mono">${Math.round(row.breakdown.loans).toLocaleString()}</span>
+                                    </div>
+                                    {row.breakdown.loanDetails.map((l, idx) => (
+                                        <div key={idx} className="flex justify-between pl-4 text-slate-400 italic">
+                                            <span>{l.name}</span>
+                                            <span>${Math.round(l.amount).toLocaleString()}</span>
+                                        </div>
+                                    ))}
+
+                                    {(row.breakdown.planned > 0 || row.breakdown.funMoney > 0) && (
+                                        <div className="mt-2 pt-1">
+                                            <div className="font-bold text-blue-600 mb-1">Extra Planning</div>
+                                            {row.breakdown.funMoney > 0 && (
+                                                <div className="flex justify-between pl-2 text-blue-500 font-medium">
+                                                    <span>{row.breakdown.funMoneyLabel}</span>
+                                                    <span>${row.breakdown.funMoney.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {row.breakdown.plannedDetails.map((p, idx) => (
+                                                <div key={idx} className="flex justify-between pl-2 text-slate-600">
+                                                    <span>{p.name}</span>
+                                                    <span>${p.amount.toLocaleString()}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 // --- FUTURE EXPENSES SUBMODULE ---
-const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenario }) => {
+const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenario, simulationDate, actions }) => {
     const [viewMode, setViewMode] = useState('table');
     const [sortAsc, setSortAsc] = useState(true);
+    const [showLongTerm, setShowLongTerm] = useState(false);
+
+    // Get "Fun Money" Brackets
+    const retirementBrackets = activeScenario.data.expenses.retirementBrackets || {};
+    const brianBirthYear = activeScenario.data.income.brian.birthYear || 1966;
+
+    const brackets = [65, 70, 75, 80, 85, 90];
 
     const debtPayments = useMemo(() => {
         const payments = [];
@@ -120,7 +385,7 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
     }, [mergedData, viewMode]);
 
     const chartData = useMemo(() => {
-        const start = startOfToday();
+        const start = startOfMonth(simulationDate);
         const data = [];
         let maxVal = 0;
         for(let i=0; i<24; i++) {
@@ -132,22 +397,29 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
             data.push({ date: key, label: format(d, 'MMM yy'), total, items });
         }
         return { data, maxVal };
-    }, [mergedData]);
+    }, [mergedData, simulationDate]);
 
 
     return (
-        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden mb-4 mt-2">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
-                <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase"><Calendar size={14}/> Future Planning & One-Offs</h3>
-                <div className="flex bg-white rounded border border-slate-200 p-1">
-                    <button onClick={() => setViewMode('table')} className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Data Table"><Table size={16}/></button>
-                    <button onClick={() => setViewMode('group')} className={`p-1.5 rounded ${viewMode === 'group' ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Grouped View"><List size={16}/></button>
-                    <button onClick={() => setViewMode('chart')} className={`p-1.5 rounded ${viewMode === 'chart' ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Visualize"><BarChart3 size={16}/></button>
+        <div className="mt-2">
+            <div className="flex justify-between items-center mb-4">
+                 {/* View Toggles */}
+                 <div className="flex bg-slate-100 rounded p-1 border border-slate-200">
+                    <button onClick={() => setViewMode('table')} className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Data Table"><Table size={16}/></button>
+                    <button onClick={() => setViewMode('group')} className={`p-1.5 rounded ${viewMode === 'group' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Grouped View"><List size={16}/></button>
+                    <button onClick={() => setViewMode('chart')} className={`p-1.5 rounded ${viewMode === 'chart' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`} title="Visualize"><BarChart3 size={16}/></button>
+                </div>
+
+                {/* Sub-Navigation */}
+                <div className="flex gap-4">
+                    <button onClick={() => setShowLongTerm(false)} className={`text-xs font-bold px-3 py-1 rounded-full transition-colors ${!showLongTerm ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-100'}`}>Planned Items</button>
+                    <button onClick={() => setShowLongTerm(true)} className={`text-xs font-bold px-3 py-1 rounded-full transition-colors ${showLongTerm ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-100'}`}>Long-Term Rules</button>
                 </div>
             </div>
 
-            <div className="p-4 bg-slate-50/50 min-h-[300px]">
-                {viewMode === 'table' && (
+            <div className="min-h-[300px]">
+
+                {!showLongTerm && viewMode === 'table' && (
                     <div>
                          <div className="flex justify-between mb-2">
                              <button onClick={() => setSortAsc(!sortAsc)} className="text-xs font-bold text-slate-500 hover:text-blue-600 flex items-center gap-1">Sort by Date {sortAsc ? '▲' : '▼'} </button>
@@ -176,7 +448,7 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
                          </div>
                     </div>
                 )}
-                {viewMode === 'group' && (
+                {!showLongTerm && viewMode === 'group' && (
                     <div className="space-y-4">
                         {Object.keys(rollupData).sort().map(year => (
                             <div key={year} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
@@ -197,12 +469,52 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
                         {Object.keys(rollupData).length === 0 && <div className="text-center text-slate-400 py-10">No data to display</div>}
                     </div>
                 )}
-                {viewMode === 'chart' && (
+                {!showLongTerm && viewMode === 'chart' && (
                     <div className="bg-white p-6 rounded-lg border border-slate-200 h-[400px] flex items-end justify-between gap-2 overflow-x-auto">
                          {chartData.data.map((col, idx) => {
                              const heightPct = chartData.maxVal > 0 ? (col.total / chartData.maxVal) * 100 : 0;
                              return (<div key={idx} className="flex flex-col items-center gap-2 flex-1 min-w-[30px] h-full justify-end group relative">{col.total > 0 && (<div className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors relative" style={{ height: `${heightPct}%`, minHeight: '4px' }}><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 pointer-events-none transition-opacity"><div className="font-bold">${col.total.toLocaleString()}</div><div className="text-[9px] text-slate-300">{col.items.length} items</div></div></div>)}<div className="text-[9px] font-bold text-slate-500 uppercase -rotate-45 origin-top-left translate-y-4 whitespace-nowrap">{col.label}</div></div>);
                          })}
+                    </div>
+                )}
+
+                {/* --- NEW: LONG TERM RULES --- */}
+                {showLongTerm && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="col-span-full bg-blue-50 p-4 rounded text-sm text-slate-600 border border-blue-100 flex items-start gap-3">
+                            <Palmtree className="text-blue-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-bold text-blue-700">Annual "Fun Money" Rules (Retirement)</p>
+                                <p>Specify the <strong>annual</strong> budget for travel, vacations, and holidays for each 5-year age bracket starting at Brian's age 65. (Brian born: {brianBirthYear})</p>
+                            </div>
+                        </div>
+
+                        {brackets.map(age => {
+                             const yearStart = brianBirthYear + age;
+                             const yearEnd = yearStart + 4;
+                             const val = retirementBrackets[age] || 0;
+
+                             return (
+                                <div key={age} className="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="font-bold text-slate-700">Age {age} - {age + 4}</span>
+                                        <span className="text-xs text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">Years: {yearStart}-{yearEnd}</span>
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-2 text-slate-400 text-sm">$</span>
+                                        <input
+                                            type="number"
+                                            step="1000"
+                                            className="w-full pl-6 border rounded px-3 py-2 font-mono text-slate-700 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                            placeholder="0"
+                                            value={val === 0 ? '' : val}
+                                            onChange={(e) => actions.updateScenarioData(`expenses.retirementBrackets.${age}`, parseFloat(e.target.value) || 0)}
+                                        />
+                                        <span className="absolute right-3 top-2.5 text-xs text-slate-400 uppercase">/ year</span>
+                                    </div>
+                                </div>
+                             )
+                        })}
                     </div>
                 )}
             </div>
@@ -246,31 +558,49 @@ export default function Expenses() {
   const totalLiving = calculateTotal(editData.living);
   const totalImpounds = calculateTotal(editData.impounds);
 
-  // --- ACTIVE LOANS LOGIC ---
+  // One Off Total for Current Month (for Accordion Header)
+  const currentMonthKey = format(simulationDate, 'yyyy-MM');
+  const totalOneOffsThisMonth = editData.oneOffs
+    .filter(item => item.date === currentMonthKey)
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  // --- ACTIVE LOANS LOGIC (CORRECTED WITH ENGINE) ---
+  const loanCalculations = useMemo(() => {
+      const results = {};
+      Object.values(activeScenario.data.loans).forEach(loan => {
+          if (!loan.active) return;
+          const stratId = loan.activeStrategyId || 'base';
+          const strategy = loan.strategies?.[stratId] || { extraPayments: {} };
+
+          if (loan.type === 'revolving') {
+              results[loan.id] = calculateRevolvingLoan(loan.inputs, strategy.extraPayments);
+          } else {
+              results[loan.id] = calculateFixedLoan(loan.inputs, strategy.extraPayments);
+          }
+      });
+      return results;
+  }, [activeScenario]);
+
   const activeLoanObjects = Object.values(activeScenario.data.loans).map(loan => {
     if (loan.active === false) return null;
-    if (!loan.inputs.startDate) return null;
+    const calc = loanCalculations[loan.id];
+    if (!calc) return null;
 
-    const loanStart = parseISO(loan.inputs.startDate);
-    // Correctly hide loans that haven't started yet based on Current Model Month
-    const isStarted = isBefore(loanStart, simulationDate) || isSameMonth(loanStart, simulationDate);
+    // Find the row for the current simulation month
+    const row = calc.schedule.find(r => r.date === currentMonthKey);
 
-    if (!isStarted) return null;
-
-    const stratId = loan.activeStrategyId || 'base';
-    const strat = loan.strategies[stratId];
-    const simMonthKey = format(simulationDate, 'yyyy-MM');
-
-    const minPayment = loan.inputs.payment || 0;
-    const extraPayment = strat.extraPayments?.[simMonthKey] || 0;
+    // If no row found, it's either future (not started) or past (paid off)
+    // We filter out paid off loans to avoid showing $0
+    if (!row) return null;
 
     return {
         id: loan.id,
         name: loan.name,
         type: loan.type,
-        minPayment,
-        extraPayment,
-        total: minPayment + extraPayment
+        minPayment: row.payment - (row.extraApplied || 0),
+        extraPayment: row.extraApplied || 0,
+        total: row.payment,
+        balance: row.endingBalance
     };
   }).filter(Boolean);
 
@@ -300,7 +630,7 @@ export default function Expenses() {
     actions.updateScenarioData(`expenses.${category}`, list);
   };
 
-  const addFutureExpense = () => { const list = [...editData.oneOffs]; list.push({ id: Date.now(), date: format(startOfToday(), 'yyyy-MM'), name: 'New Planned Expense', amount: 0, notes: '' }); actions.updateScenarioData('expenses.oneOffs', list); };
+  const addFutureExpense = () => { const list = [...editData.oneOffs]; list.push({ id: Date.now(), date: format(simulationDate, 'yyyy-MM'), name: 'New Planned Expense', amount: 0, notes: '' }); actions.updateScenarioData('expenses.oneOffs', list); };
   const updateFutureExpense = (id, field, value) => { const list = editData.oneOffs.map(item => item.id === id ? { ...item, [field]: value } : item); actions.updateScenarioData('expenses.oneOffs', list); };
   const removeFutureExpense = (id) => { const list = editData.oneOffs.filter(item => item.id !== id); actions.updateScenarioData('expenses.oneOffs', list); };
 
@@ -339,12 +669,15 @@ export default function Expenses() {
             </div>
             <div className="flex items-center gap-2 mt-2"><span className="text-sm text-slate-500">Total Monthly Burn:</span><span className="text-xl font-bold text-red-500">${Math.round(monthlyBurn).toLocaleString()}</span></div>
           </div>
+
           <div className="flex flex-col items-end gap-2">
-             <button onClick={() => setShowProfileMgr(!showProfileMgr)} className={`text-xs font-bold px-3 py-2 rounded border transition-colors flex items-center gap-2 ${showProfileMgr ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600'}`}><Calendar size={14} /> Profile Manager {showProfileMgr ? '▲' : '▼'}</button>
-             <div className="flex items-center gap-2">
-                 {activeProfile && (<button onClick={handleSaveChanges} className="text-xs font-bold px-3 py-2 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-2 shadow-sm transition-colors" title="Save changes to current profile"><Save size={14} /> Save to "{activeProfile.name}"</button>)}
-                 <button onClick={handleSaveAsNew} className="text-xs font-bold px-3 py-2 rounded bg-slate-800 text-white hover:bg-slate-700 flex items-center gap-2 shadow-sm transition-colors" title="Save as new Profile"><Copy size={14} /> Save as New</button>
-             </div>
+             <ProfileMenu
+                activeProfileName={activeProfileName}
+                onSave={handleSaveChanges}
+                onSaveAs={handleSaveAsNew}
+                onToggleMgr={() => setShowProfileMgr(!showProfileMgr)}
+                showMgr={showProfileMgr}
+             />
           </div>
         </div>
 
@@ -374,6 +707,11 @@ export default function Expenses() {
       </div>
 
       <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full">
+
+          {/* 0. EXPENSE SUMMARY (PROJECTION) */}
+          <Accordion title="Expense Summary (Projection)" total={0} defaultOpen={false}>
+              <ExpenseSummary activeScenario={activeScenario} simulationDate={simulationDate} />
+          </Accordion>
 
           {/* 1. BILLS */}
           <Accordion title="Recurring Bills" total={totalBills} defaultOpen={true} onAdd={() => addBill('bills')}>
@@ -408,25 +746,46 @@ export default function Expenses() {
              <div className="space-y-1">{editData.living.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('living', idx, f, v)} onDelete={() => removeBill('living', idx)} />))}</div>
           </Accordion>
 
-          <div className="mb-4 mt-6">
-              <button onClick={() => setShowFutureMgr(!showFutureMgr)} className="flex items-center gap-2 font-bold text-slate-700 hover:text-blue-600 transition-colors mb-2">{showFutureMgr ? <ChevronDown size={18}/> : <ChevronRight size={18}/>} Future Expenses & One-Offs</button>
-              {showFutureMgr && (<FutureExpensesModule oneOffs={editData.oneOffs} activeScenario={activeScenario} onAdd={addFutureExpense} onChange={updateFutureExpense} onDelete={removeFutureExpense} />)}
-          </div>
+          {/* 5. OTHER LOANS (MOVED & STYLED) */}
+          <Accordion title="Other Loans" total={totalDebtService} defaultOpen={false}>
+             <div className="space-y-0.5">
+                {otherLoans.length === 0 && <div className="text-sm text-slate-400 italic p-2">No other active loans found.</div>}
+                {otherLoans.map(loan => (
+                    <div key={loan.id} className="py-2 px-2 border-b border-slate-50 last:border-0 hover:bg-slate-50 rounded">
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-slate-700">{loan.name}</span>
+                            <span className="font-mono text-sm font-bold text-slate-700">${loan.total.toLocaleString()}</span>
+                        </div>
+                        {loan.extraPayment > 0 && (
+                           <div className="mt-1 pl-4 border-l-2 border-slate-100 ml-1">
+                              <div className="flex justify-between text-xs text-slate-500">
+                                 <span>Minimum Pmt</span>
+                                 <span>${loan.minPayment.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between text-xs text-blue-600 font-medium">
+                                 <span>Extra Principal</span>
+                                 <span>${loan.extraPayment.toLocaleString()}</span>
+                              </div>
+                           </div>
+                        )}
+                    </div>
+                ))}
+             </div>
+          </Accordion>
 
-          <div className="bg-slate-50 p-5 rounded-lg border border-slate-200 border-dashed mt-6">
-               <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-200"><h3 className="font-bold text-slate-700 flex items-center gap-2"><CreditCard size={16}/> Other Active Debts</h3><span className="text-xs font-mono font-bold text-slate-500 bg-white px-2 py-1 rounded shadow-sm">${totalDebtService.toLocaleString()}</span></div>
-               <div className="space-y-3">
-                 {otherLoans.length === 0 && <div className="text-xs text-slate-400 italic">No other active debts found for this date.</div>}
-                 {otherLoans.map((loan) => (
-                     <div key={loan.id} className="bg-white p-3 rounded shadow-sm border border-slate-100 flex justify-between items-center">
-                         <div className="flex flex-col">
-                             <span className="font-bold text-xs text-slate-700">{loan.name}</span>
-                         </div>
-                         <span className="font-mono text-sm font-bold text-slate-800">${loan.total.toLocaleString()}</span>
-                     </div>
-                 ))}
-               </div>
-            </div>
+          {/* 6. EXTRA EXPENSE PLANNING */}
+          <Accordion title="Extra Expense Planning" total={totalOneOffsThisMonth} defaultOpen={false}>
+              <FutureExpensesModule
+                 oneOffs={editData.oneOffs}
+                 activeScenario={activeScenario}
+                 onAdd={addFutureExpense}
+                 onChange={updateFutureExpense}
+                 onDelete={removeFutureExpense}
+                 simulationDate={simulationDate}
+                 actions={actions}
+              />
+          </Accordion>
+
       </div>
     </div>
   );

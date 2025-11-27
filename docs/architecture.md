@@ -1,8 +1,8 @@
 # BA Financial Planning - Technical Architecture
 
-Version: 9.0
+Version: 0.7 (Updated Session 9)
 
-Date: November 26, 2025
+Date: November 27, 2025
 
 **Tech Stack:** React 19, Vite, TailwindCSS, Lodash, Date-fns
 
@@ -23,7 +23,7 @@ We utilize a single-source-of-truth pattern using React Context (`DataContext.js
 - **Initial State:**
   1. **Load from `localStorage`:** Checks for a saved state first.
   2. **Schema Validation:** Verifies the loaded data has critical fields (`meta`, `scenarios`).
-  3. **Polyfill/Migration:** Automatically injects missing fields (e.g., `globals.timing`, `expenses.impounds`) if loading an older data structure.
+  3. **Polyfill/Migration:** Automatically injects missing fields (e.g., `globals.timing`, `expenses.impounds`, `income.brian.birthYear`) if loading an older data structure.
   4. **Fallback:** Reverts to `src/data/hgv_data.json` if local storage is corrupt or empty.
 - **Persistence:**
   - **Auto-Save:** Every state change triggers a write to `localStorage`.
@@ -47,24 +47,25 @@ scenarios: {
     lastUpdated: ISOString,
     data: {
       globals: {
-        timing: { startYear: 2025, startMonth: 1 }, // Global Date Engine
+        timing: { startYear: 2026, startMonth: 1 },
+        currentModelDate: "2026-01-01", // Time Machine Cursor
         inflation: {},
         market: {}
       },
       income: {
-        activeProfileId: String,
-        profileSequence: [ { profileId, startDate, isActive } ],
-        workStatus: { [year]: { brian: 1.0, andrea: 0.6 } },
+        brian: { birthYear: 1966, ... }, // Birth Year drives Age Projections
+        andrea: { birthYear: 1965, ... },
         ...sources
       },
       expenses: {
         activeProfileId: String,
         profileSequence: [],
-        bills: [],      // Recurring Bills
-        impounds: [],   // Mortgage, Tax, Insurance
-        home: [],       // HOA, Maintenance
-        living: [],     // General Spending
-        oneOffs: []     // Future Expense Planning
+        bills: [],
+        impounds: [],
+        home: [],
+        living: [],
+        oneOffs: [],     // Specific Future Items
+        retirementBrackets: { "65": 15000, "70": 10000 } // Long-Term Rules
       },
       loans: {
         [loanId]: {
@@ -83,34 +84,6 @@ scenarios: {
 }
 ```
 
-### 2.2 The Profile Registry
-
-Stores partial data chunks for "Mix-and-Match" injection.
-
-```
-profiles: {
-  [profileId]: {
-    id: String,
-    type: "income" | "expenses",
-    name: String,
-    data: Object // The distinct payload to be injected
-  }
-}
-```
-
-### 2.3 The Export Object (Portable Plan)
-
-When exporting, the system creates a self-contained object:
-
-```
-{
-  ...scenarioObject,
-  linkedProfiles: {
-     [profileId]: { ...profileData } // Only profiles used by this scenario
-  }
-}
-```
-
 ## 3. Component Hierarchy
 
 ```
@@ -121,12 +94,11 @@ App (Shell)
 │       ├── TopBar (Global Date Engine & Time Travel)
 │       │
 │       ├── Expenses View (Cash Flow Manager)
-│       │   ├── ProfileManager (Timeline & Activation)
-│       │   ├── FutureExpensesModule (One-Off Planning)
-│       │   │   ├── DataEntryTable
-│       │   │   └── Visualizer (Bar Chart)
+│       │   ├── ExpenseSummary (New: 35-Year Projection Engine)
+│       │   ├── ProfileMenu (Consolidated Actions)
 │       │   ├── ExpenseGroup (Accordion: Bills, Impounds, Home, Living)
-│       │   └── ActiveDebtSummary (Computed from Loans)
+│       │   ├── OtherLoans (Accordion: Monthly Debt Service with Payoff Logic)
+│       │   └── ExtraExpensePlanning (Accordion: Future Expenses & Fun Money Rules)
 │       │
 │       ├── Loans View (Debt Manager)
 │       │   ├── LoanList (Sidebar Selection)
@@ -134,31 +106,52 @@ App (Shell)
 │       │   └── AmortizationTable (Grid w/ Drag-to-Fill)
 │       │
 │       ├── Income View (Salary & Bonus)
-│       └── Assumptions View (Global Rates)
+│       └── Assumptions View (Global Rates & Birth Years)
 ```
 
 ## 4. Logic Engines (Separation of Concerns)
 
 ### 4.1 `src/utils/loan_math.js`
 
-Pure functions that handle complex financial math.
+Pure functions that handle complex financial math. This is a critical utility used by multiple views.
 
 - **Inputs:** Raw Loan Object + Strategy Object.
 - **Outputs:** `{ schedule: Array, summary: Object }`.
-- **Logic:** Handles Fixed vs. Revolving logic, payment overrides, and payoff dates.
+- **Logic:** Handles Fixed vs. Revolving logic, payment overrides, and accurate payoff date calculation.
 
-### 4.2 `src/context/DataContext.jsx`
+### 4.2 The "Bridge" Pattern (Expenses Integration)
+
+In Version 0.7, we established a direct dependency between the **Expenses View** and the **Loan Math Engine** to ensure projection accuracy.
+
+- **Problem:** The `Expenses` view needs to know exactly when a loan is paid off to stop showing payments in the 35-year projection. Simply multiplying `monthlyPayment * 12` is inaccurate for loans with aggressive early payoff strategies (e.g., HELOCs).
+- **Solution:** `src/views/expenses.jsx` imports `calculateFixedLoan` and `calculateRevolvingLoan` directly. It runs the math for every active loan on-the-fly to generate the projection bars and the "Other Loans" list.
+
+### 4.3 `src/context/DataContext.jsx`
 
 The "Brain" of the application.
 
 - **Scenario Management:** Create, Rename, Delete, Clone scenarios.
 - **Import/Export:** Parsing JSON, merging Linked Profiles, handling ID collisions.
 - **State Mutations:** CRUD operations for all data points.
-- **Safety:** Prevents crashes by validating data on load and providing default fallbacks.
 
-### 4.3 `src/views/`
+## 5. Data Flow Diagram (v0.7)
 
-Handles "Presentation Logic" and View-Specific State.
+```
+graph TD
+    DataStore[hgv_data.json / localStorage] --> DataContext
+    DataContext --> LoansView
+    DataContext --> ExpensesView
+    DataContext --> IncomeView
+    
+    subgraph Math Layer
+        LoanMath[utils/loan_math.js]
+    end
 
-- **Expense Categorization:** The `Expenses` view strictly renders categories based on the JSON arrays (`bills`, `impounds`, `home`, `living`) without auto-sorting, ensuring user intent is preserved.
-- **Loan Visibility:** The `Expenses` view filters the "Active Debt" list to only show loans that have started by the current Simulation Date.
+    LoansView -- Inputs --> LoanMath
+    LoanMath -- Schedule --> LoansView
+
+    ExpensesView -- Inputs --> LoanMath
+    LoanMath -- Payoff Dates & Amounts --> ExpensesView
+    
+    note[Note: Expenses View now calculates Loan Amortization independently to project accurate future cash flow.]
+```

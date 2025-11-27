@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import initialData from '../data/hgv_data.json';
 import { cloneDeep, set } from 'lodash';
+import { format, parseISO, isValid } from 'date-fns';
 
 const DataContext = createContext();
 
@@ -28,10 +29,15 @@ export const DataProvider = ({ children }) => {
     Object.values(data.scenarios).forEach(scen => {
         if (!scen.data.globals) scen.data.globals = {};
         if (!scen.data.globals.timing) {
-            scen.data.globals.timing = { startYear: 2025, startMonth: 1 };
+            scen.data.globals.timing = { startYear: 2026, startMonth: 1 };
         }
         if (!scen.data.expenses) scen.data.expenses = { bills: [], home: [], living: [] };
+        if (!scen.data.expenses.retirementBrackets) scen.data.expenses.retirementBrackets = {};
+
         if (!scen.data.income) scen.data.income = { brian: {}, andrea: {} };
+        // Default birth years (User Updates: 1966 & 1965)
+        if (!scen.data.income.brian.birthYear) scen.data.income.brian.birthYear = 1966;
+        if (!scen.data.income.andrea.birthYear) scen.data.income.andrea.birthYear = 1965;
     });
 
     return data;
@@ -66,13 +72,31 @@ export const DataProvider = ({ children }) => {
   const activeScenario = store.scenarios[activeId];
   const timing = activeScenario.data.globals.timing;
 
+  // --- UPDATED: Date Initialization ---
   const [simulationDate, setSimulationDate] = useState(() => {
-      return new Date(timing.startYear, timing.startMonth - 1, 1);
+      // 1. Try to load the persisted "Model Cursor" from the scenario
+      const savedDateStr = activeScenario.data.globals.currentModelDate;
+      if (savedDateStr) {
+          const parsed = parseISO(savedDateStr);
+          if (isValid(parsed)) return parsed;
+      }
+
+      // 2. Default to January 2026
+      return new Date(2026, 0, 1);
   });
 
+  // Sync state if scenario changes (switched scenario might have a different saved date)
   useEffect(() => {
-      const currentTiming = activeScenario.data.globals.timing;
-      setSimulationDate(new Date(currentTiming.startYear, currentTiming.startMonth - 1, 1));
+      const savedDateStr = activeScenario.data.globals.currentModelDate;
+      if (savedDateStr) {
+          const parsed = parseISO(savedDateStr);
+          if (isValid(parsed)) {
+              setSimulationDate(parsed);
+              return;
+          }
+      }
+      // Fallback if no saved date in this specific scenario
+      setSimulationDate(new Date(2026, 0, 1));
   }, [activeId]);
 
 
@@ -158,7 +182,6 @@ export const DataProvider = ({ children }) => {
               newState.profiles[pid] = profile;
           } else {
               // If it exists but is different? For now, we assume ID collision = same profile or user manually manages conflicts.
-              // To be safe, we could console.log("Profile skipped: ID collision", pid);
           }
       });
       return newState;
@@ -216,7 +239,7 @@ export const DataProvider = ({ children }) => {
       try {
           if(!jsonContent.scenarios) throw new Error("Invalid file");
           Object.values(jsonContent.scenarios).forEach(scen => {
-             if (!scen.data.globals.timing) scen.data.globals.timing = { startYear: 2025, startMonth: 1 };
+             if (!scen.data.globals.timing) scen.data.globals.timing = { startYear: 2026, startMonth: 1 };
           });
           setStore(jsonContent);
           alert("Full Data Store loaded successfully!");
@@ -242,10 +265,30 @@ export const DataProvider = ({ children }) => {
         newData.scenarios[id].data.globals.timing = { startYear: parseInt(year), startMonth: parseInt(month) };
         return newData;
     });
-    setSimulationDate(new Date(year, month - 1, 1));
   };
 
-  const setSimulationMonth = (dateObj) => setSimulationDate(dateObj);
+  const setSimulationMonth = (dateObjOrUpdater) => {
+    setSimulationDate(currentDate => {
+        return typeof dateObjOrUpdater === 'function' ? dateObjOrUpdater(currentDate) : dateObjOrUpdater;
+    });
+  };
+
+  // Effect to sync simulationDate to store
+  useEffect(() => {
+      if (!isLoaded || !activeId) return;
+
+      const dateStr = format(simulationDate, 'yyyy-MM-dd');
+
+      // Only update store if it's different to prevent loops
+      if (store.scenarios[activeId].data.globals.currentModelDate !== dateStr) {
+           setStore(prev => {
+              const newData = cloneDeep(prev);
+              newData.scenarios[activeId].data.globals.currentModelDate = dateStr;
+              return newData;
+           });
+      }
+  }, [simulationDate, activeId, isLoaded]);
+
 
   // --- PROFILE HELPERS ---
   const saveProfile = (type, name, dataToSave) => {

@@ -1,14 +1,27 @@
 # This file contains notes about the work that has happened so far
+## 2025-11-27: Session 9 (Expenses Module Finalization & Projections)
+**Status:** Phase 3 (Cash Flow) Complete / Phase 4 (Financial Engine) Prep.
+**Focus:** Advanced Expense Planning, Long-Range Projections, and Loan Integration.
 
+### **Accomplishments**
+* **Expense Module Overhaul:**
+    * Implemented **Expense Summary Projection**: A 35-year bar chart and data table at the top of the Expenses view.
+    * Integrated **Loan Amortization Engine**: The projection now calculates exact loan payoff dates (preventing "zombie" payments after payoff) by importing `loan_math.js` directly.
+    * Added **Long-Term "Fun Money" Rules**: Users can now plan retirement spending based on 5-year age brackets (Age 65-90).
+    * **UI Refinements**: Moved "Other Loans" under Living Expenses, renamed Future Expenses to "Extra Expense Planning", and consolidated Profile actions into a dropdown menu.
+* **Global Data Updates:**
+    * Updated default Model Start Date to **January 2026**.
+    * Added specific **Birth Years** (Brian: 1966, Andrea: 1965) to `hgv_data.json` and `DataContext` to drive age-based planning.
+    * Fixed persisted `currentModelDate` logic to ensure the "Time Machine" cursor is saved.
 
 ## 2025-11-26: Session 8 (Data Persistence, Future Planning & Requirements Freeze)
 
-Status: Phase 3 (Cash Flow) Complete. Requirements v9.0 Finalized.
+Status: Phase 3 (Cash Flow) Complete. Requirements v0.7 (previously v9.0) Finalized.
 
 Focus: Implementing robust Data Persistence, the Future Expenses planning tool, and finalizing strict categorization rules for the Expense Manager.
 
 ### **Accomplishments**
-
+- re-versioned the application to 0.7 from v9 to reflect it's still not complete.
 - **Data Architecture & Persistence:**
   - **Auto-Save:** Implemented `localStorage` persistence to prevent data loss on refresh.
   - **Import/Export Engine:** Built a robust JSON handler that bundles **Linked Profiles** with the Scenario Data, ensuring full portability of plans.

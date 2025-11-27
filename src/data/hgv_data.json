@@ -8,12 +8,25 @@
       "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02 },
       "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
       "taxTiers": { "working": 0.3, "retired": 0.2 },
-      "timing": { "startYear": 2025, "startMonth": 1 }
+      "timing": { "startYear": 2026, "startMonth": 1 },
+      "currentModelDate": "2026-01-01"
     },
     "income": {
       "activeProfileId": null,
-      "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.1, "bonus": { "amount": 20000, "month": 3 } },
-      "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.1, "bonus": { "amount": 0, "month": 12 } },
+      "brian": {
+        "netSalary": 168000,
+        "grossForContrib": 285000,
+        "contribPercent": 0.1,
+        "bonus": { "amount": 20000, "month": 3 },
+        "birthYear": 1966
+      },
+      "andrea": {
+        "netSalary": 105000,
+        "grossForContrib": 173000,
+        "contribPercent": 0.1,
+        "bonus": { "amount": 0, "month": 12 },
+        "birthYear": 1965
+      },
       "workStatus": {
         "2025": { "brian": 1, "andrea": 1 },
         "2026": { "brian": 1, "andrea": 0.6 },
@@ -53,8 +66,9 @@
         { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
       ],
       "oneOffs": [],
+      "retirementBrackets": {},
       "profileSequence": [
-        { "profileId": "prof_1764202486442", "startDate": "2025-01-01", "isActive": true }
+        { "profileId": "prof_1764202486442", "startDate": "2026-01-01", "isActive": true }
       ]
     },
     "loans": {
@@ -112,7 +126,7 @@
         ],
         "oneOffs": [],
         "profileSequence": [
-          { "profileId": "prof_1764202486442", "startDate": "2025-01-01", "isActive": true }
+          { "profileId": "prof_1764202486442", "startDate": "2026-01-01", "isActive": true }
         ]
       },
       "created": "2025-11-27T00:14:46.442Z"
