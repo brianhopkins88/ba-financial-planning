@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { Save, Download, ChevronDown, ChevronRight, Copy } from 'lucide-react';
+import { Save, ChevronDown, ChevronRight, Copy } from 'lucide-react';
 
 // --- FIXED COMPONENT: Handles decimal typing correctly ---
 const NumberInput = ({ label, value, path, updateData, step = "0.01", suffix }) => {
@@ -61,24 +61,8 @@ const Section = ({ title, children, defaultOpen = false }) => {
 
 export default function Assumptions() {
   const { activeScenario, actions } = useData();
-
-  // Alias for cleaner code in the inputs below
-  // This maps directly to 'scenarios[id].data' in the JSON
   const data = activeScenario.data;
   const updateData = actions.updateScenarioData;
-
-  // Action: Download current Scenario as JSON
-  const handleDownload = () => {
-    const jsonString = JSON.stringify(activeScenario, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${activeScenario.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Action: Clone Scenario (Snapshots are now new Scenarios)
   const handleClone = () => {
@@ -103,9 +87,6 @@ export default function Assumptions() {
         <div className="flex items-center gap-3">
           <button onClick={handleClone} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 rounded hover:bg-slate-50 text-sm font-medium border border-slate-300 shadow-sm transition-colors">
             <Copy size={16} /> Clone Scenario
-          </button>
-          <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 rounded hover:bg-slate-50 text-sm font-medium border border-slate-300 shadow-sm transition-colors">
-            <Download size={16} /> Export JSON
           </button>
         </div>
       </header>

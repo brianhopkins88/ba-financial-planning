@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { calculateFixedLoan, calculateRevolvingLoan } from '../utils/loan_math';
 import { format, parseISO } from 'date-fns';
-import { ChevronRight, Plus, Trash2, DollarSign, Settings, Power } from 'lucide-react';
+import { ChevronRight, Plus, Trash2, DollarSign, Settings, Power, Save, ChevronDown, Copy, Pencil } from 'lucide-react';
 
 const ConfigInput = ({ label, value, type = "text", onChange, step, suffix, readOnly = false }) => (
   <div className="flex flex-col space-y-1">
@@ -56,6 +56,8 @@ export default function Loans() {
   const loans = activeScenario.data.loans || {};
   const loanKeys = Object.keys(loans);
   const [selectedLoanId, setSelectedLoanId] = useState(loanKeys[0] || null);
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   const [dragStartIdx, setDragStartIdx] = useState(null);
   const [dragEndIdx, setDragEndIdx] = useState(null);
@@ -98,7 +100,8 @@ export default function Loans() {
   const calculation = useMemo(() => {
     const inputs = loan.inputs;
     const strategyPayments = activeStrategy.extraPayments || {};
-    if (loan.type === 'fixed') return calculateFixedLoan(inputs, strategyPayments);
+    // Treat 'mortgage' type the same as 'fixed' for math purposes
+    if (loan.type === 'fixed' || loan.type === 'mortgage') return calculateFixedLoan(inputs, strategyPayments);
     return calculateRevolvingLoan(inputs, strategyPayments);
   }, [loan, activeStrategy]);
 
@@ -142,8 +145,39 @@ export default function Loans() {
     const path = `loans.${activeLoanId}.strategies.${activeStratId}.extraPayments.${monthKey}`;
     actions.updateScenarioData(path, amount <= 0 ? 0 : amount);
   };
-  const handleCreateStrategy = () => { const name = prompt("New Strategy Name:"); if(name) actions.addLoanStrategy(activeLoanId, name); };
-  const handleDeleteStrategy = () => { if(activeStratId !== 'base' && confirm(`Delete strategy?`)) actions.deleteLoanStrategy(activeLoanId, activeStratId); };
+
+  // --- RICH MENU ACTIONS ---
+  const handleProfileSelect = (id) => {
+      actions.updateScenarioData(`loans.${activeLoanId}.activeStrategyId`, id);
+      setIsProfileMenuOpen(false);
+  };
+  const handleCreateStrategy = () => {
+      const name = prompt("New Payoff Profile Name:", "Aggressive Payoff");
+      if(name) {
+          actions.addLoanStrategy(activeLoanId, name);
+          setIsProfileMenuOpen(false);
+      }
+  };
+  const handleRenameStrategy = (e, sid, oldName) => {
+      e.stopPropagation();
+      const name = prompt("Rename profile:", oldName);
+      if(name && name !== oldName) actions.renameLoanStrategy(activeLoanId, sid, name);
+  };
+  const handleDuplicateStrategy = (e, sid, oldName) => {
+      e.stopPropagation();
+      const name = prompt("Name for duplicate:", `${oldName} (Copy)`);
+      if(name) actions.duplicateLoanStrategy(activeLoanId, sid, name);
+  };
+  const handleDeleteStrategy = (e, sid) => {
+      e.stopPropagation();
+      if(confirm("Delete this payoff profile?")) actions.deleteLoanStrategy(activeLoanId, sid);
+  };
+
+  const handleSave = () => {
+      actions.saveAll();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+  };
 
   return (
     <div className="flex h-full select-none">
@@ -170,19 +204,31 @@ export default function Loans() {
               </div>
               <div className="flex items-center gap-4 mt-2">
                 <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
-                  <input type="radio" checked={loan.type === 'fixed'} onChange={() => updateMeta('type', 'fixed')} /> Fixed
+                  <input type="radio" checked={loan.type === 'mortgage'} onChange={() => updateMeta('type', 'mortgage')} /> Mortgage
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
+                  <input type="radio" checked={loan.type === 'fixed'} onChange={() => updateMeta('type', 'fixed')} /> Fixed Loan
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
                   <input type="radio" checked={loan.type === 'revolving'} onChange={() => updateMeta('type', 'revolving')} /> Revolving
                 </label>
               </div>
             </div>
-            <button onClick={handleDeleteLoan} className="text-slate-400 hover:text-red-600 transition-colors p-2 rounded hover:bg-red-50"><Trash2 size={18} /></button>
+
+            <div className="flex items-center gap-2">
+                 <button
+                    onClick={handleSave}
+                    className={`flex items-center gap-2 px-4 py-2 rounded font-bold text-sm transition-all ${saveStatus === 'saved' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                 >
+                     <Save size={16} /> {saveStatus === 'saved' ? 'Saved!' : 'Save Loan'}
+                 </button>
+                 <button onClick={handleDeleteLoan} className="text-slate-400 hover:text-red-600 transition-colors p-2 rounded hover:bg-red-50"><Trash2 size={18} /></button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
-             <ConfigInput label="Start Date" value={loan.inputs.startDate || ''} type="text" onChange={(v) => updateInput('startDate', v)} />
-            {loan.type === 'fixed' ? (
+             <ConfigInput label="Start Date" value={loan.inputs.startDate || ''} type="date" onChange={(v) => updateInput('startDate', v)} />
+            {(loan.type === 'fixed' || loan.type === 'mortgage') ? (
               <>
                 <ConfigInput label="Principal" value={loan.inputs.principal} type="number" step="1000" onChange={(v) => handleFixedInput('principal', v)} />
                 <ConfigInput label="Rate (Dec)" value={loan.inputs.rate} type="number" step="0.001" onChange={(v) => handleFixedInput('rate', v)} />
@@ -200,21 +246,54 @@ export default function Loans() {
         </div>
 
         {/* STRATEGY BAR */}
-        <div className="bg-white border-b border-slate-200 px-8 py-3 flex items-center justify-between">
+        <div className="bg-white border-b border-slate-200 px-8 py-3 flex items-center justify-between z-20">
            <div className="flex items-center gap-3">
              <Settings size={16} className="text-slate-400" />
-             <select
-                className="bg-transparent text-sm font-semibold text-slate-700 border-none focus:ring-0 cursor-pointer"
-                value={activeStratId}
-                onChange={(e) => actions.updateScenarioData(`loans.${activeLoanId}.activeStrategyId`, e.target.value)}
-              >
-                {Object.keys(strategies).map(k => (
-                  <option key={k} value={k}>Strategy: {strategies[k].name}</option>
-                ))}
-              </select>
-              <button onClick={handleCreateStrategy} className="p-1 rounded hover:bg-slate-100 text-blue-600" title="Create New"><Plus size={16} /></button>
-              {activeStratId !== 'base' && <button onClick={handleDeleteStrategy} className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>}
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Payoff Profile:</span>
+
+             {/* RICH DROPDOWN MENU */}
+             <div className="relative">
+                 <button
+                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                    className="flex items-center gap-2 text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors"
+                 >
+                     {activeStrategy.name} <ChevronDown size={14} className="text-blue-500"/>
+                 </button>
+
+                 {isProfileMenuOpen && (
+                     <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsProfileMenuOpen(false)}></div>
+                        <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 z-50 overflow-hidden">
+                            <div className="max-h-64 overflow-y-auto">
+                                {Object.entries(strategies).map(([sid, s]) => (
+                                    <div
+                                        key={sid}
+                                        className={`group flex items-center justify-between p-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 ${sid === activeStratId ? 'bg-blue-50/50' : ''}`}
+                                        onClick={() => handleProfileSelect(sid)}
+                                    >
+                                        <span className={`text-sm truncate flex-1 ${sid === activeStratId ? 'text-blue-700 font-bold' : 'text-slate-600'}`}>
+                                            {s.name}
+                                        </span>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={(e) => handleRenameStrategy(e, sid, s.name)} className="p-1 hover:bg-blue-100 rounded text-slate-400 hover:text-blue-500" title="Rename"><Pencil size={12}/></button>
+                                            <button onClick={(e) => handleDuplicateStrategy(e, sid, s.name)} className="p-1 hover:bg-blue-100 rounded text-slate-400 hover:text-green-500" title="Duplicate"><Copy size={12}/></button>
+                                            <button onClick={(e) => handleDeleteStrategy(e, sid)} className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500" title="Delete"><Trash2 size={12}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button
+                                onClick={handleCreateStrategy}
+                                className="w-full p-2 bg-slate-50 text-xs text-slate-500 hover:text-blue-600 hover:bg-slate-100 border-t border-slate-200 flex items-center justify-center gap-1 font-bold uppercase tracking-wider transition-colors"
+                            >
+                                <Plus size={12}/> Create New Profile
+                            </button>
+                        </div>
+                     </>
+                 )}
+             </div>
            </div>
+
            <div className="flex gap-6">
               <div className="flex items-center gap-2 text-sm"><span className="text-slate-400">Payoff:</span><span className="font-bold text-green-600">{calculation.summary.payoffDate ? format(parseISO(calculation.summary.payoffDate), 'MMM yyyy') : 'Never'}</span></div>
               <div className="flex items-center gap-2 text-sm"><span className="text-slate-400">Total Interest:</span><span className="font-bold text-blue-600">${Math.round(calculation.summary.totalInterest).toLocaleString()}</span></div>
@@ -222,7 +301,7 @@ export default function Loans() {
         </div>
 
         {/* TABLE */}
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-8 z-0">
           <table className="w-full text-sm text-left border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
             <thead className="bg-slate-100 text-slate-500 font-semibold uppercase text-xs sticky top-0 shadow-sm z-10">
               <tr>

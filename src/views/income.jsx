@@ -45,6 +45,9 @@ export default function Income() {
 
   // 3. Edit Data (Scratchpad)
   const editData = activeScenario.data.income;
+  // Safety Init for Bonus
+  if (!editData.brian.bonus) editData.brian.bonus = { amount: 0, month: 12 };
+  if (!editData.andrea.bonus) editData.andrea.bonus = { amount: 0, month: 12 };
 
   // 4. Generate Work Status Years
   const startYear = globalStart.startYear;
@@ -222,6 +225,27 @@ export default function Income() {
                      onChange={(v) => actions.updateScenarioData('income.brian.netSalary', v)}
                      step="1000"
                    />
+                   <div className="grid grid-cols-2 gap-2">
+                        <NumberInput
+                            label="Annual Bonus (Net)"
+                            value={editData.brian.bonus.amount}
+                            onChange={(v) => actions.updateScenarioData('income.brian.bonus.amount', v)}
+                            step="1000"
+                        />
+                        <div className="flex flex-col space-y-1">
+                            <label className="text-xs font-bold text-slate-400 uppercase">Payout Month</label>
+                            <select
+                                className="w-full border border-slate-300 rounded px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                                value={editData.brian.bonus.month}
+                                onChange={(e) => actions.updateScenarioData('income.brian.bonus.month', parseInt(e.target.value))}
+                            >
+                                {Array.from({length: 12}, (_, i) => i+1).map(m => (
+                                    <option key={m} value={m}>{new Date(2000, m-1).toLocaleString('default', {month:'short'})}</option>
+                                ))}
+                            </select>
+                        </div>
+                   </div>
+                   <div className="h-px bg-slate-100 my-2"></div>
                    <NumberInput
                      label="Gross (For 401k Calc)"
                      value={editData.brian.grossForContrib}
@@ -246,6 +270,27 @@ export default function Income() {
                      onChange={(v) => actions.updateScenarioData('income.andrea.netSalary', v)}
                      step="1000"
                    />
+                   <div className="grid grid-cols-2 gap-2">
+                        <NumberInput
+                            label="Annual Bonus (Net)"
+                            value={editData.andrea.bonus.amount}
+                            onChange={(v) => actions.updateScenarioData('income.andrea.bonus.amount', v)}
+                            step="1000"
+                        />
+                         <div className="flex flex-col space-y-1">
+                            <label className="text-xs font-bold text-slate-400 uppercase">Payout Month</label>
+                            <select
+                                className="w-full border border-slate-300 rounded px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                                value={editData.andrea.bonus.month}
+                                onChange={(e) => actions.updateScenarioData('income.andrea.bonus.month', parseInt(e.target.value))}
+                            >
+                                {Array.from({length: 12}, (_, i) => i+1).map(m => (
+                                    <option key={m} value={m}>{new Date(2000, m-1).toLocaleString('default', {month:'short'})}</option>
+                                ))}
+                            </select>
+                        </div>
+                   </div>
+                   <div className="h-px bg-slate-100 my-2"></div>
                    <NumberInput
                      label="Gross (For 401k Calc)"
                      value={editData.andrea.grossForContrib}
@@ -267,7 +312,7 @@ export default function Income() {
             <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
               <h3 className="font-bold text-slate-700 mb-4">Work Status Trajectory (0.0 - 1.0)</h3>
               <p className="text-sm text-slate-400 mb-4">
-                 Extended to 10 years from Scenario Start. Defaults to 0 if unset.
+                 Extended to 10 years from Scenario Start. Defaults to 0 if unset. Bonus logic uses this multiplier.
               </p>
               <div className="overflow-x-auto">
                  <table className="w-full text-sm text-left">

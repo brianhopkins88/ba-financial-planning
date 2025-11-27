@@ -1,134 +1,121 @@
 {
-  "meta": {
-    "version": "8.5",
-    "activeScenarioId": "scen_default"
+  "id": "scen_default",
+  "name": "Current Home HGV",
+  "created": "2025-11-23T06:00:00Z",
+  "lastUpdated": "2025-11-27T00:38:13.233Z",
+  "data": {
+    "globals": {
+      "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02 },
+      "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
+      "taxTiers": { "working": 0.3, "retired": 0.2 },
+      "timing": { "startYear": 2025, "startMonth": 1 }
+    },
+    "income": {
+      "activeProfileId": null,
+      "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.1, "bonus": { "amount": 20000, "month": 3 } },
+      "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.1, "bonus": { "amount": 0, "month": 12 } },
+      "workStatus": {
+        "2025": { "brian": 1, "andrea": 1 },
+        "2026": { "brian": 1, "andrea": 0.6 },
+        "2027": { "brian": 1, "andrea": 0.6 },
+        "2028": { "brian": 1, "andrea": 0.6 },
+        "2029": { "brian": 1, "andrea": 0 },
+        "2030": { "brian": 0.6, "andrea": 0 }
+      }
+    },
+    "assets": {
+      "joint": 99000, "inheritedIRA": 376000, "retirement401k": 950000, "homeValue": 1450000
+    },
+    "expenses": {
+      "activeProfileId": "prof_initial",
+      "bills": [
+        { "id": "b1", "name": "AT&T Internet", "amount": 62 },
+        { "id": "b2", "name": "AT&T Cable", "amount": 228 },
+        { "id": "b4", "name": "Cell Phone", "amount": 160 },
+        { "id": "b6", "name": "Subscriptions", "amount": 250 },
+        { "id": "h4", "name": "Security System", "amount": 67 },
+        { "id": "h5", "name": "Water", "amount": 142 },
+        { "id": "h6", "name": "Electric", "amount": 78 },
+        { "id": "h7", "name": "Gas", "amount": 45 },
+        { "id": "h8", "name": "Trash", "amount": 45 },
+        { "id": "b3", "name": "Car Insurance", "amount": 520 },
+        { "id": "b5", "name": "Pet Insurance", "amount": 120 }
+      ],
+      "home": [
+        { "id": "h3", "name": "HOA", "amount": 244 },
+        { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
+      ],
+      "living": [
+        { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
+      ],
+      "impounds": [
+        { "id": "h1", "name": "Property Tax", "amount": 1472 },
+        { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
+      ],
+      "oneOffs": [],
+      "profileSequence": [
+        { "profileId": "prof_1764202486442", "startDate": "2025-01-01", "isActive": true }
+      ]
+    },
+    "loans": {
+      "mortgage": {
+        "id": "mortgage", "name": "HGV Mortgage", "type": "mortgage", "active": true,
+        "inputs": { "principal": 801000, "rate": 0.0325, "payment": 3486, "startDate": "2019-10-01", "termMonths": 360 },
+        "activeStrategyId": "base",
+        "strategies": { "base": { "name": "Minimum Payment", "extraPayments": {} } }
+      },
+      "heloc": {
+        "id": "heloc", "name": "Home Equity Line", "type": "revolving", "active": true,
+        "inputs": { "balance": 160419, "rate": 0.0825, "payment": 1350, "startDate": "2026-01-01" },
+        "activeStrategyId": "base",
+        "strategies": {
+          "base": {
+            "name": "Andie Retire Jun 27",
+            "extraPayments": {
+              "2026-02": 7500, "2026-03": 27500, "2026-04": 7500, "2026-05": 7500, "2026-06": 7500, "2026-07": 7500,
+              "2026-08": 5000, "2026-09": 5000, "2026-10": 5000, "2026-11": 5000, "2026-12": 5000, "2027-01": 25000,
+              "2027-02": 5000, "2027-03": 31337, "2027-04": 0
+            }
+          }
+        }
+      }
+    }
   },
-  "profiles": {
-    "prof_initial": {
-      "id": "prof_initial",
-      "name": "Initial Expenses",
-      "type": "expenses",
-      "created": "2025-11-25T12:00:00Z",
+  "linkedProfiles": {
+    "prof_1764202486442": {
+      "id": "prof_1764202486442", "name": "HGV", "type": "expenses",
       "data": {
         "activeProfileId": "prof_initial",
         "bills": [
           { "id": "b1", "name": "AT&T Internet", "amount": 62 },
           { "id": "b2", "name": "AT&T Cable", "amount": 228 },
-          { "id": "b3", "name": "Car Insurance", "amount": 520 },
           { "id": "b4", "name": "Cell Phone", "amount": 160 },
-          { "id": "b5", "name": "Pet Insurance", "amount": 120 },
-          { "id": "b6", "name": "Subscriptions", "amount": 250 }
-        ],
-        "home": [
-          { "id": "h1", "name": "Property Tax", "amount": 1472 },
-          { "id": "h2", "name": "Home Owners Insurance", "amount": 457 },
-          { "id": "h3", "name": "HOA", "amount": 244 },
+          { "id": "b6", "name": "Subscriptions", "amount": 250 },
           { "id": "h4", "name": "Security System", "amount": 67 },
           { "id": "h5", "name": "Water", "amount": 142 },
           { "id": "h6", "name": "Electric", "amount": 78 },
           { "id": "h7", "name": "Gas", "amount": 45 },
           { "id": "h8", "name": "Trash", "amount": 45 },
+          { "id": "b3", "name": "Car Insurance", "amount": 520 },
+          { "id": "b5", "name": "Pet Insurance", "amount": 120 }
+        ],
+        "home": [
+          { "id": "h3", "name": "HOA", "amount": 244 },
           { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
         ],
         "living": [
           { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
+        ],
+        "impounds": [
+          { "id": "h1", "name": "Property Tax", "amount": 1472 },
+          { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
+        ],
+        "oneOffs": [],
+        "profileSequence": [
+          { "profileId": "prof_1764202486442", "startDate": "2025-01-01", "isActive": true }
         ]
-      }
-    }
-  },
-  "scenarios": {
-    "scen_default": {
-      "id": "scen_default",
-      "name": "Current Home HGV",
-      "created": "2025-11-23T06:00:00Z",
-      "lastUpdated": "2025-11-23T06:00:00Z",
-      "data": {
-        "globals": {
-          "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02 },
-          "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
-          "taxTiers": { "working": 0.30, "retired": 0.20 }
-        },
-        "income": {
-          "activeProfileId": null,
-          "brian": { "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10 },
-          "andrea": { "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10 },
-          "workStatus": {
-            "2025": { "brian": 1.0, "andrea": 1.0 },
-            "2026": { "brian": 1.0, "andrea": 1.0 },
-            "2027": { "brian": 1.0, "andrea": 1.0 },
-            "2028": { "brian": 1.0, "andrea": 0.6 },
-            "2029": { "brian": 1.0, "andrea": 0.6 },
-            "2030": { "brian": 0.6, "andrea": 0.0 }
-          }
-        },
-        "assets": {
-          "joint": 99000,
-          "inheritedIRA": 376000,
-          "retirement401k": 950000,
-          "homeValue": 1450000
-        },
-        "expenses": {
-          "activeProfileId": "prof_initial",
-          "bills": [
-            { "id": "b1", "name": "AT&T Internet", "amount": 62 },
-            { "id": "b2", "name": "AT&T Cable", "amount": 228 },
-            { "id": "b3", "name": "Car Insurance", "amount": 520 },
-            { "id": "b4", "name": "Cell Phone", "amount": 160 },
-            { "id": "b5", "name": "Pet Insurance", "amount": 120 },
-            { "id": "b6", "name": "Subscriptions", "amount": 250 }
-          ],
-          "home": [
-            { "id": "h1", "name": "Property Tax", "amount": 1472 },
-            { "id": "h2", "name": "Home Owners Insurance", "amount": 457 },
-            { "id": "h3", "name": "HOA", "amount": 244 },
-            { "id": "h4", "name": "Security System", "amount": 67 },
-            { "id": "h5", "name": "Water", "amount": 142 },
-            { "id": "h6", "name": "Electric", "amount": 78 },
-            { "id": "h7", "name": "Gas", "amount": 45 },
-            { "id": "h8", "name": "Trash", "amount": 45 },
-            { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
-          ],
-          "living": [
-            { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
-          ]
-        },
-        "loans": {
-          "mortgage": {
-            "id": "mortgage",
-            "name": "Primary Mortgage",
-            "type": "fixed",
-            "active": true,
-            "inputs": {
-              "principal": 801000,
-              "rate": 0.0325,
-              "payment": 3486,
-              "startDate": "2019-10-01",
-              "termMonths": 360
-            },
-            "activeStrategyId": "base",
-            "strategies": {
-              "base": { "name": "Minimum Payment", "extraPayments": {} }
-            }
-          },
-          "heloc": {
-            "id": "heloc",
-            "name": "Home Equity Line",
-            "type": "revolving",
-            "active": true,
-            "inputs": {
-              "balance": 160200,
-              "rate": 0.0825,
-              "payment": 1350,
-              "startDate": "2025-01-01"
-            },
-            "activeStrategyId": "base",
-            "strategies": {
-              "base": { "name": "Minimum Payment", "extraPayments": {} },
-              "aggressive": { "name": "Aggressive Payoff", "extraPayments": { "2026-03": 5000 } }
-            }
-          }
-        }
-      }
+      },
+      "created": "2025-11-27T00:14:46.442Z"
     }
   }
 }

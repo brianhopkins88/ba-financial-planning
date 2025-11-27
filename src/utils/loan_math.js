@@ -1,4 +1,4 @@
-import { addMonths, format, parseISO, differenceInMonths } from 'date-fns';
+import { addMonths, format, parseISO, differenceInMonths, isValid } from 'date-fns';
 
 /**
  * CORE AMORTIZATION ENGINE
@@ -11,7 +11,11 @@ export const calculateFixedLoan = (loanInput, strategies = {}) => {
 
   // 1. Setup Initial State
   let balance = loanInput.principal;
+
+  // SAFETY CHECK: Prevent crash if date is partial/invalid
   let currentDate = parseISO(loanInput.startDate);
+  if (!isValid(currentDate)) currentDate = new Date();
+
   const monthlyRate = loanInput.rate / 12;
   const minPayment = loanInput.payment;
 
@@ -82,8 +86,11 @@ export const calculateRevolvingLoan = (loanInput, strategies = {}) => {
 
   // HELOC inputs usually have current balance, not original
   let balance = loanInput.balance;
+
   // Default start date to "now" if not provided, or a fixed anchor
   let currentDate = loanInput.startDate ? parseISO(loanInput.startDate) : new Date();
+  // SAFETY CHECK
+  if (!isValid(currentDate)) currentDate = new Date();
 
   const monthlyRate = loanInput.rate / 12;
   const plannedPayment = loanInput.payment; // User's planned monthly payment

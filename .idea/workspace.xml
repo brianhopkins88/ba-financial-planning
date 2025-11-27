@@ -4,17 +4,16 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of upgrade to v8.1 architecture and requirements">
-      <change afterPath="$PROJECT_DIR$/src/views/expenses.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/views/income.jsx" afterDir="false" />
+    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of upgrade to v8.6 architecture and requirements">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ BA Financial Planning - Requirements Specification.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/architecture.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/architecture.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/work_context.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/components/sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/context/DataContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/context/DataContext.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data/hgv_data.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/hgv_data.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils/loan_math.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/loan_math.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/assumptions.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/assumptions.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/expenses.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/expenses.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/income.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/income.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/views/loans.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/loans.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -117,7 +116,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764075594428</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="Commit of upgrade to v8.6 architecture and requirements">
+      <option name="closed" value="true" />
+      <created>1764166519407</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1764166519408</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -135,6 +142,7 @@
     <MESSAGE value="Commit of initial working code" />
     <MESSAGE value="Commit of upgrade to v8 requirements &amp; architecture with smoke test sat." />
     <MESSAGE value="Commit of upgrade to v8.1 architecture and requirements" />
-    <option name="LAST_COMMIT_MESSAGE" value="Commit of upgrade to v8.1 architecture and requirements" />
+    <MESSAGE value="Commit of upgrade to v8.6 architecture and requirements" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit of upgrade to v8.6 architecture and requirements" />
   </component>
 </project>

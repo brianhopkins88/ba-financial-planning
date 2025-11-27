@@ -26,6 +26,7 @@
 
 ### **Next Steps**
 
+- Implement a **Future Expense Planning submodule** in expenses.
 - **Phase 4 (Financial Engine):** Build the core logic (`financial_engine.js`) to aggregate these time-phased profiles into a Net Worth projection.
 - **Dashboard:** Connect the visual charts to the output of the Financial Engine.
 
