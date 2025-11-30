@@ -47,7 +47,7 @@ const getPortfolioReturn = (age, assumptions) => {
 
 // --- MAIN SIMULATION ---
 export const runFinancialSimulation = (scenario, profiles) => {
-    if (!scenario || !scenario.data) return { timeline: [], events: [] };
+    if (!scenario || !scenario.data) return { timeline: [], events: [], reverseMortgageDetails: [] };
 
     const data = scenario.data;
     const assumptions = data.assumptions || data.globals;
@@ -65,7 +65,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         growth.forEach(pt => { propertyTrajectories[prop.id][pt.year] = pt.value; });
     });
 
-    const loanBalances = {};
+    const loanScheduleMap = {};
     Object.values(data.loans || {}).forEach(loan => {
         if (!loan.active) return;
         const stratId = loan.activeStrategyId || 'base';
@@ -73,8 +73,10 @@ export const runFinancialSimulation = (scenario, profiles) => {
         let res;
         if (loan.type === 'revolving') res = calculateRevolvingLoan(loan.inputs, strategy.extraPayments);
         else res = calculateFixedLoan(loan.inputs, strategy.extraPayments);
-        loanBalances[loan.id] = {};
-        res.schedule.forEach(row => { loanBalances[loan.id][row.date] = row.endingBalance; });
+        loanScheduleMap[loan.id] = {};
+        res.schedule.forEach(row => {
+            loanScheduleMap[loan.id][row.date] = { payment: row.payment, balance: row.endingBalance };
+        });
     });
 
     let andreaPensionStartYear = 9999;
@@ -89,14 +91,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
     // --- 1. INITIALIZE STATE ---
     const state = {
         cash: 0, joint: 0, inherited: 0, retirement: 0, reverseMortgage: 0,
-        // Component Tracking (Basis vs Growth) - Lifetime
         components: {
             cash: { basis: 0, growth: 0 },
             joint: { basis: 0, growth: 0 },
             inherited: { basis: 0, growth: 0 },
             retirement: { basis: 0, growth: 0 }
         },
-        // Annual Flow Tracking (Reset yearly)
         annualFlows: {
             cash: { deposits: 0, withdrawals: 0, growth: 0 },
             joint: { deposits: 0, withdrawals: 0, growth: 0 },
@@ -107,59 +107,60 @@ export const runFinancialSimulation = (scenario, profiles) => {
         insolvencyLogged: false,
         properties: {},
         closedLoans: new Set(),
+        activeLoans: new Set(),
         ssLogged: { brian: false, andrea: false },
         pensionLogged: { andrea: false },
         iraEvents: {}
     };
 
-    // Helper to manage components and flows
+    Object.values(data.loans || {}).forEach(l => { if(l.active) state.activeLoans.add(l.id); });
+
+    const rmDetails = [];
+    const rmCurrentYear = { draws: 0, interest: 0 };
+
     const updateComponents = (type, amount, isGrowth = false) => {
         if (!state.components[type]) return;
-
         const comp = state.components[type];
         const flow = state.annualFlows[type];
         const balance = state[type];
 
         if (amount > 0) {
-            // Deposit / Growth
-            if (isGrowth) {
-                comp.growth += amount;
-                flow.growth += amount;
-            } else {
-                comp.basis += amount;
-                flow.deposits += amount;
-            }
+            if (isGrowth) { comp.growth += amount; flow.growth += amount; }
+            else { comp.basis += amount; flow.deposits += amount; }
         } else {
-            // Withdrawal (reduce proportionally for Basis/Growth tracking)
             const absAmt = Math.abs(amount);
-
-            // Log Flow (Store as positive magnitude here, negate in UI)
             flow.withdrawals += absAmt;
-
-            if (balance <= 0.01) {
-                comp.basis = 0;
-                comp.growth = 0;
-                return;
-            }
+            if (balance <= 0.01) { comp.basis = 0; comp.growth = 0; return; }
             const ratio = absAmt / balance;
             const safeRatio = Math.min(ratio, 1.0);
-
             comp.basis -= comp.basis * safeRatio;
             comp.growth -= comp.growth * safeRatio;
         }
     };
 
     const assets = Object.values(data.assets.accounts || {});
+    const futureAssets = [];
+
     assets.forEach(a => {
         if (!a.active) return;
-        if (['cash', 'joint', 'inherited', 'retirement'].includes(a.type)) {
-            state[a.type] += a.balance;
-            state.components[a.type].basis += a.balance;
-        }
+
         if (a.type === 'property') {
             const pStart = a.inputs?.startDate ? parseISO(a.inputs.startDate) : startDate;
             if (!isAfter(pStart, startDate)) state.properties[a.id] = { active: true, value: a.balance };
             else state.properties[a.id] = { active: false, value: 0 };
+        }
+        else if (['cash', 'joint', 'inherited', 'retirement'].includes(a.type)) {
+            const aStartStr = a.inputs?.startDate;
+            const aStart = aStartStr ? parseISO(aStartStr) : startDate;
+            if (isAfter(aStart, startDate)) {
+                futureAssets.push({
+                    id: a.id, type: a.type, name: a.name, balance: a.balance,
+                    startDateStr: aStartStr.substring(0, 7)
+                });
+            } else {
+                state[a.type] += a.balance;
+                state.components[a.type].basis += a.balance;
+            }
         }
     });
 
@@ -178,6 +179,33 @@ export const runFinancialSimulation = (scenario, profiles) => {
     for (let i = 0; i < 60; i++) steps.push({ type: 'month', index: i });
     for (let i = 1; i <= 30; i++) steps.push({ type: 'year', index: i });
 
+    // --- INITIAL SNAPSHOT ---
+    let initialDebt = 0;
+    let initialPropVal = 0;
+    const startMonthKey = format(startDate, 'yyyy-MM');
+    state.activeLoans.forEach(lid => {
+        const sched = loanScheduleMap[lid];
+        if (sched && sched[startMonthKey]) initialDebt += sched[startMonthKey].balance;
+        else {
+            const l = data.loans[lid];
+            const lStart = l.inputs.startDate ? parseISO(l.inputs.startDate) : startDate;
+            if(!isAfter(lStart, startDate)) initialDebt += (l.inputs.balance || l.inputs.principal);
+        }
+    });
+    Object.values(state.properties).forEach(p => { if(p.active) initialPropVal += p.value; });
+
+    timeline.push({
+        year: startYear, month: 0, date: format(startDate, 'yyyy-MM-dd'),
+        age: startYear - (data.income.brian.birthYear || 1966),
+        andreaAge: startYear - (data.income.andrea.birthYear || 1965),
+        income: 0, expenses: 0, netCashFlow: 0,
+        balances: { ...state, property: initialPropVal, liquid: state.cash + state.joint, totalDebt: initialDebt }, // ADDED totalDebt
+        components: JSON.parse(JSON.stringify(state.components)),
+        flows: { ...state.annualFlows },
+        netWorth: (state.cash + state.joint + state.inherited + state.retirement + initialPropVal) - (state.reverseMortgage + initialDebt),
+        shortfall: 0
+    });
+
     // --- 3. LOOP ---
     steps.forEach(step => {
         const isMonthly = step.type === 'month';
@@ -188,12 +216,27 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const monthIndex = getMonth(currentDate) + 1;
         const dt = isMonthly ? 1 / 12 : 1.0;
 
-        // Reset Annual Flows in January
         if (monthIndex === 1) {
             ['cash', 'joint', 'inherited', 'retirement'].forEach(k => {
                 state.annualFlows[k] = { deposits: 0, withdrawals: 0, growth: 0 };
             });
+            rmCurrentYear.draws = 0;
+            rmCurrentYear.interest = 0;
         }
+
+        // --- FUTURE ASSETS ---
+        futureAssets.forEach((fa, idx) => {
+            if (fa.activated) return;
+            let isTime = false;
+            if (isMonthly) { if (fa.startDateStr === monthKey) isTime = true; }
+            else { if (fa.startDateStr.startsWith(year.toString())) isTime = true; }
+            if (isTime) {
+                updateComponents(fa.type, fa.balance);
+                state[fa.type] += fa.balance;
+                events.push({ date: dateStr, text: `Asset Activated: ${fa.name} ($${Math.round(fa.balance).toLocaleString()})` });
+                futureAssets[idx].activated = true;
+            }
+        });
 
         const brianBirthYear = data.income.brian.birthYear || 1966;
         const andreaBirthYear = data.income.andrea.birthYear || 1965;
@@ -204,37 +247,57 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const yearsElapsed = step.type === 'month' ? step.index / 12 : (5 + step.index);
         const inflationMult = Math.pow(1 + inflationRate, yearsElapsed);
 
-        const taxRate = getTaxRate(year, data.income.workStatus || {}, assumptions);
+        const workStatus = data.income.workStatus?.[year] || { brian: 0, andrea: 0 };
+        const taxRate = getTaxRate(year, workStatus, assumptions);
 
-        // --- INHERITED IRA MANDATORY EVENTS ---
+        // --- 401K CONTRIBUTIONS (BRIAN MATCH ONLY) ---
+        const brianGross = (data.income.brian.grossForContrib || 0) * inflationMult;
+        const andreaGross = (data.income.andrea.grossForContrib || 0) * inflationMult;
+
+        const brianContribPct = data.income.brian.contribPercent || 0;
+        const andreaContribPct = data.income.andrea.contribPercent || 0;
+
+        // Brian Match: 50% of first 6%
+        const brianMatchRate = Math.min(brianContribPct, 0.06) * 0.5;
+        const andreaMatchRate = 0;
+
+        const brianEmployeeContrib = (brianGross * workStatus.brian * brianContribPct) * dt;
+        const brianEmployerMatch = (brianGross * workStatus.brian * brianMatchRate) * dt;
+        const andreaEmployeeContrib = (andreaGross * workStatus.andrea * andreaContribPct) * dt;
+        const andreaEmployerMatch = (andreaGross * workStatus.andrea * andreaMatchRate) * dt;
+
+        const totalContrib = brianEmployeeContrib + brianEmployerMatch + andreaEmployeeContrib + andreaEmployerMatch;
+
+        if (totalContrib > 0) {
+            updateComponents('retirement', totalContrib);
+            state.retirement += totalContrib;
+        }
+
+        // --- INHERITED IRA ---
         if (state.inherited > 0) {
             let mandatoryWithdrawal = 0;
             const isJanuary = monthIndex === 1;
-
             if (isJanuary && year >= iraFirstWithdrawalYear && year <= iraFinalWithdrawalYear) {
                 const idx = year - iraFirstWithdrawalYear;
                 let pct = iraSchedule[idx] !== undefined ? iraSchedule[idx] : 0.1;
-                if (year === iraFinalWithdrawalYear) {
-                    pct = 1.0;
-                    if (!state.iraEvents.depleted) {
-                        events.push({ date: dateStr, text: "Inherited IRA Final Year: Fully Withdrawn" });
-                        state.iraEvents.depleted = true;
-                    }
-                }
+                if (year === iraFinalWithdrawalYear) pct = 1.0;
                 mandatoryWithdrawal = state.inherited * pct;
             }
-
             if (mandatoryWithdrawal > 0) {
                 if (mandatoryWithdrawal > state.inherited) mandatoryWithdrawal = state.inherited;
-
                 updateComponents('inherited', -mandatoryWithdrawal);
                 state.inherited -= mandatoryWithdrawal;
+                if(state.inherited < 1) state.inherited = 0;
 
                 const effectiveTaxRate = getIraTaxRate(mandatoryWithdrawal, taxRate);
                 const netProceeds = mandatoryWithdrawal * (1 - effectiveTaxRate);
-
                 updateComponents('joint', netProceeds);
                 state.joint += netProceeds;
+
+                if (year === iraFinalWithdrawalYear && !state.iraEvents.depleted) {
+                    events.push({ date: dateStr, text: "Inherited IRA Final Year: Fully Withdrawn" });
+                    state.iraEvents.depleted = true;
+                }
             }
         }
 
@@ -246,16 +309,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 const startStr = prop.inputs?.startDate ? prop.inputs.startDate.slice(0, 7) : '9999-99';
                 if (startStr === monthKey) {
                     state.properties[pId] = { active: true, value: 0 };
-                    events.push({ date: dateStr, text: `Purchased Property: ${prop.name}` });
+                    events.push({ date: dateStr, text: `Asset Acquired: ${prop.name}` });
                     if (prop.inputs.purchasePlan?.funding) {
                         prop.inputs.purchasePlan.funding.forEach(fund => {
                             if (!fund.amount || !fund.sourceId) return;
-                            const amt = fund.amount;
-                            const sourceAcct = data.assets.accounts[fund.sourceId];
-                            if (sourceAcct && ['cash','joint','inherited','retirement'].includes(sourceAcct.type)) {
-                                updateComponents(sourceAcct.type, -amt);
-                                state[sourceAcct.type] -= amt;
-                            }
+                            updateComponents(data.assets.accounts[fund.sourceId].type, -fund.amount);
+                            state[data.assets.accounts[fund.sourceId].type] -= fund.amount;
                         });
                     }
                 }
@@ -269,9 +328,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
                      let totalLoanPayoff = 0;
                      const linkedIds = prop.inputs?.linkedLoanIds || (prop.inputs?.linkedLoanId ? [prop.inputs.linkedLoanId] : []);
                      linkedIds.forEach(lid => {
-                         if (loanBalances[lid]) {
-                             totalLoanPayoff += (loanBalances[lid][monthKey] || 0);
+                         const sched = loanScheduleMap[lid];
+                         if (sched) {
+                             const currentInfo = sched[monthKey] || { balance: 0 };
+                             totalLoanPayoff += currentInfo.balance;
                              state.closedLoans.add(lid);
+                             state.activeLoans.delete(lid);
                          }
                      });
                      let rmPayoff = 0;
@@ -281,25 +343,21 @@ export const runFinancialSimulation = (scenario, profiles) => {
                          state.rmActive = false;
                      }
                      const finalCash = netProceedsBeforeLoan - totalLoanPayoff - rmPayoff;
-
                      if (finalCash > 0) {
                          updateComponents('joint', finalCash);
                          state.joint += finalCash;
                      }
                      state.properties[pId].active = false;
                      state.properties[pId].value = 0;
-                     events.push({ date: dateStr, text: `Sold ${prop.name}. Net: $${Math.round(finalCash).toLocaleString()}` });
+                     events.push({ date: dateStr, text: `Sold ${prop.name}. Net Equity: $${Math.round(finalCash).toLocaleString()}` });
                  }
             }
-
              if (state.properties[pId]?.active) {
                  state.properties[pId].value = propertyTrajectories[pId][year] || 0;
                  totalActivePropValue += state.properties[pId].value;
              }
         });
 
-        // --- INCOME & EXPENSES ---
-        const workStatus = data.income.workStatus?.[year] || { brian: 0, andrea: 0 };
         const incomeProfile = getActiveProfile(data.income.profileSequence, dateStr, profiles) || data.income;
 
         let periodIncome = 0;
@@ -355,14 +413,70 @@ export const runFinancialSimulation = (scenario, profiles) => {
         Object.values(data.loans).forEach(loan => {
             if (!loan.active) return;
             if (state.closedLoans.has(loan.id)) return;
-            const bal = loanBalances[loan.id]?.[monthKey];
-            if (bal !== undefined && bal > 0) totalActiveLoanBalance += bal;
-            periodExpenses += (loan.inputs.payment || 0) * (isMonthly ? 1 : 12);
+
+            const sched = loanScheduleMap[loan.id];
+            if (!sched) return;
+
+            if (isMonthly) {
+                const info = sched[monthKey];
+                if (info) {
+                    if (info.payment > 0) {
+                        periodExpenses += info.payment;
+                        totalActiveLoanBalance += info.balance;
+                    }
+                    if (info.balance <= 0.01 && state.activeLoans.has(loan.id)) {
+                        events.push({ date: dateStr, text: `Liability Paid Off: ${loan.name}` });
+                        state.activeLoans.delete(loan.id);
+                        state.closedLoans.add(loan.id);
+                    }
+                }
+            } else {
+                let annualPayment = 0;
+                let lastBalance = 0;
+                for (let m=1; m<=12; m++) {
+                    const mKey = `${year}-${String(m).padStart(2,'0')}`;
+                    const info = sched[mKey];
+                    if (info) {
+                        annualPayment += info.payment;
+                        lastBalance = info.balance;
+                    }
+                }
+                periodExpenses += annualPayment;
+                totalActiveLoanBalance += lastBalance;
+
+                if (lastBalance <= 0.01 && state.activeLoans.has(loan.id)) {
+                     events.push({ date: `${year}-12-31`, text: `Liability Paid Off: ${loan.name}` });
+                     state.activeLoans.delete(loan.id);
+                     state.closedLoans.add(loan.id);
+                }
+            }
+        });
+
+        // --- EXPENSES: FUN MONEY & ONE-OFFS (SCENARIO DRIVEN) ---
+        const planningExpenses = data.expenses || {};
+
+        // Fun Money
+        const brackets = planningExpenses.retirementBrackets || {};
+        let funMoneyBase = 0;
+        Object.keys(brackets).forEach(k => {
+            const startAge = parseInt(k);
+            if (brianAge >= startAge && brianAge < startAge + 5) funMoneyBase = brackets[k];
+        });
+        if (funMoneyBase > 0) periodExpenses += (funMoneyBase * dt) * inflationMult;
+
+        // One-Offs
+        const oneOffs = planningExpenses.oneOffs || [];
+        oneOffs.forEach(item => {
+            let match = false;
+            if (isMonthly) { if (item.date === monthKey) match = true; }
+            else { if (item.date && item.date.startsWith(year.toString())) match = true; }
+            if (match) periodExpenses += (item.amount || 0) * inflationMult;
         });
 
         const netCashFlow = periodIncome - periodExpenses;
         let shortfall = 0;
 
+        // --- CASH FLOW WATERFALL ---
         if (netCashFlow >= 0) {
             const cashMax = assumptions.thresholds?.cashMax || 30000;
             const cashRoom = cashMax - state.cash;
@@ -380,6 +494,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             let needed = Math.abs(netCashFlow);
             const cashMin = assumptions.thresholds?.cashMin || 15000;
 
+            // 1. Cash Savings (Floor: cashMin)
             const availCash = Math.max(0, state.cash - cashMin);
             if (availCash >= needed) {
                 updateComponents('cash', -needed);
@@ -391,21 +506,26 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 needed -= availCash;
             }
 
+            // 2. Joint Investment (Floor: 0 / jointMin)
             if (needed > 0) {
+                const jointMin = assumptions.thresholds?.jointMin || 0;
+                const availJoint = Math.max(0, state.joint - jointMin);
                 const effectiveRate = taxRate * 0.5;
                 const grossNeeded = needed / (1 - effectiveRate);
-                if (state.joint >= grossNeeded) {
+
+                if (availJoint >= grossNeeded) {
                     updateComponents('joint', -grossNeeded);
                     state.joint -= grossNeeded;
                     needed = 0;
                 } else {
-                    const net = state.joint * (1 - effectiveRate);
-                    updateComponents('joint', -state.joint);
-                    state.joint = 0;
+                    const net = availJoint * (1 - effectiveRate);
+                    updateComponents('joint', -availJoint);
+                    state.joint -= availJoint;
                     needed -= net;
                 }
             }
 
+            // 3. Inherited IRA
             if (needed > 0 && state.inherited > 0) {
                 const grossNeeded = needed / (1 - taxRate);
                 if (state.inherited >= grossNeeded) {
@@ -421,21 +541,30 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 }
             }
 
+            // 4. Retirement (401k/403b) - WITH FLOOR
             if (needed > 0 && state.retirement > 0) {
+                const retirementMin = assumptions.thresholds?.retirementMin || 300000;
+                const availRetirement = Math.max(0, state.retirement - retirementMin);
                 const grossNeeded = needed / (1 - taxRate);
-                if (state.retirement >= grossNeeded) {
+
+                if (availRetirement >= grossNeeded) {
                     updateComponents('retirement', -grossNeeded);
                     state.retirement -= grossNeeded;
                     needed = 0;
                 } else {
-                    const net = state.retirement * (1 - taxRate);
-                    updateComponents('retirement', -state.retirement);
-                    state.retirement = 0;
+                    // Drain down to the minimum
+                    const net = availRetirement * (1 - taxRate);
+                    updateComponents('retirement', -availRetirement);
+                    state.retirement -= availRetirement;
                     needed -= net;
-                    events.push({ date: dateStr, text: "401k Fully Depleted" });
+
+                    if (availRetirement > 0) {
+                        events.push({ date: dateStr, text: "401k Hit Safety Floor (Triggering RM)" });
+                    }
                 }
             }
 
+            // 5. Reverse Mortgage
             if (needed > 0) {
                 const hasProperty = Object.values(state.properties).some(p => p.active);
                 if (!state.rmActive && hasProperty) {
@@ -444,6 +573,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 }
                 if (state.rmActive && hasProperty) {
                     state.reverseMortgage += needed;
+                    rmCurrentYear.draws += needed;
                     needed = 0;
                 }
                 else shortfall = needed;
@@ -464,7 +594,23 @@ export const runFinancialSimulation = (scenario, profiles) => {
         applyGrowth('inherited', portRate);
         applyGrowth('retirement', portRate);
 
-        if (state.reverseMortgage > 0) state.reverseMortgage *= (1 + (0.065 * dt));
+        if (state.reverseMortgage > 0) {
+            const rmRate = assumptions.rates?.reverseMortgage || 0.065;
+            const interest = state.reverseMortgage * (rmRate * dt);
+            state.reverseMortgage += interest;
+            rmCurrentYear.interest += interest;
+        }
+
+        if (state.rmActive && (monthIndex === 12 || !isMonthly)) {
+            rmDetails.push({
+                year: year,
+                draws: rmCurrentYear.draws,
+                interest: rmCurrentYear.interest,
+                balance: state.reverseMortgage,
+                homeValue: totalActivePropValue,
+                ltv: totalActivePropValue > 0 ? (state.reverseMortgage / totalActivePropValue) : 0
+            });
+        }
 
         state.netWorth = (state.cash + state.joint + state.inherited + state.retirement + totalActivePropValue) - (state.reverseMortgage + totalActiveLoanBalance);
 
@@ -472,7 +618,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             year, month: isMonthly ? monthIndex : 12, date: dateStr,
             age: brianAge, andreaAge,
             income: periodIncome, expenses: periodExpenses, netCashFlow,
-            balances: { ...state, property: totalActivePropValue },
+            balances: { ...state, property: totalActivePropValue, liquid: state.cash + state.joint, totalDebt: totalActiveLoanBalance }, // EXPORT TOTAL DEBT
             components: JSON.parse(JSON.stringify(state.components)),
             flows: JSON.parse(JSON.stringify(state.annualFlows)),
             netWorth: state.netWorth, shortfall
@@ -487,5 +633,5 @@ export const runFinancialSimulation = (scenario, profiles) => {
         else state.date = addYears(state.date, 1);
     });
 
-    return { timeline, events };
+    return { timeline, events, reverseMortgageDetails: rmDetails };
 };

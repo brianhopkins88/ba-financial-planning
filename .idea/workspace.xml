@@ -7,19 +7,12 @@
     <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of interim refactoring of the specification document to v0.9x">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/work_context.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/PropertyPlanner.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/PropertyPlanner.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/components/sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/context/DataContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/context/DataContext.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data/hgv_data.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/hgv_data.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/asset_math.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/asset_math.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/utils/financial_engine.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/financial_engine.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/views/assets.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/assets.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/assumptions.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/assumptions.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/dashboard.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/dashboard.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/views/expenses.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/expenses.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/income.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/income.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/loans.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/loans.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -185,7 +178,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764523883947</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="Commit of interim refactoring of the specification document to v0.9x">
+      <option name="closed" value="true" />
+      <created>1764530965507</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1764530965507</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

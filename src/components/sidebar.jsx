@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, FilePlus, Download, RotateCcw, ChevronDown, Copy, Trash2, Pencil, TrendingUp, PiggyBank, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, FilePlus, Download, RotateCcw, ChevronDown, Copy, Trash2, Pencil, TrendingUp, PiggyBank, RefreshCw, Wallet, Database } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
@@ -9,6 +9,7 @@ export default function Sidebar({ currentView, setView }) {
   const fileInputRef = useRef(null);
   const [uploadMode, setUploadMode] = useState(null);
 
+  // Standard Export: Active Scenario + Linked Profiles
   const handleExportScenario = () => {
     const usedProfileIds = new Set();
     activeScenario.data.income?.profileSequence?.forEach(p => usedProfileIds.add(p.profileId));
@@ -23,10 +24,20 @@ export default function Sidebar({ currentView, setView }) {
     document.body.appendChild(link); link.click(); document.body.removeChild(link); setIsMenuOpen(false);
   };
 
+  // Dev Export: Full Store (Matches hgv_data.json structure)
+  const handleExportSource = () => {
+    const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `hgv_data_source_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); setIsMenuOpen(false);
+  };
+
   const handleMenuItemClick = (action) => {
       setIsMenuOpen(false);
       if(action === 'save') { actions.saveAll(); alert("Scenario saved."); }
       if(action === 'export') handleExportScenario();
+      if(action === 'export_source') handleExportSource();
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
       if(action === 'upload_current') { setUploadMode('current'); fileInputRef.current.click(); }
       if(action === 'upload_new') { setUploadMode('new'); fileInputRef.current.click(); }
@@ -72,14 +83,15 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v0.91</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v0.97</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
                 <div className="fixed inset-0 z-30" onClick={() => setIsMenuOpen(false)}></div>
                 <div className="absolute right-4 top-14 w-64 bg-white rounded-lg shadow-xl z-50 py-2 border border-slate-200 text-slate-700">
                     <button onClick={() => handleMenuItemClick('save')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Save size={14} className="text-blue-600"/> Save Changes</button>
-                    <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export Data</button>
+                    <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export Scenario</button>
+                    <button onClick={() => handleMenuItemClick('export_source')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Database size={14} className="text-slate-600"/> Export Full Source</button>
                     <div className="h-px bg-slate-100 my-1"></div>
                     <button onClick={() => handleMenuItemClick('upload_current')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Upload to Current</button>
                     <button onClick={() => handleMenuItemClick('upload_new')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><FilePlus size={14} className="text-purple-600"/> Upload as New</button>
@@ -119,9 +131,8 @@ export default function Sidebar({ currentView, setView }) {
       <nav className="flex-1 p-4 space-y-1">
         <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">Modules</div>
         <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />
-        <NavItem id="income" label="Income & Work" icon={TrendingUp} />
-        <NavItem id="expenses" label="Expenses" icon={Receipt} />
-        <NavItem id="loans" label="Loans & Debt" icon={Landmark} />
+        <NavItem id="expenses" label="Cash Flow" icon={Wallet} />
+        <NavItem id="loans" label="Liabilities" icon={Landmark} />
         <NavItem id="assets" label="Assets & Property" icon={PiggyBank} />
         <NavItem id="assumptions" label="Assumptions" icon={Settings} />
       </nav>

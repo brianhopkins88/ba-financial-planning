@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine, Legend, Line } from 'recharts';
 import { TrendingUp, AlertTriangle, DollarSign, Activity } from 'lucide-react';
 
 // --- CUSTOM TOOLTIP ---
@@ -9,19 +9,28 @@ const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         const data = payload[0].payload;
         return (
-            <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-xl text-xs">
+            <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-xl text-xs z-50">
                 <div className="font-bold text-slate-700 mb-2 border-b border-slate-100 pb-1">
-                    Year: {data.year}
+                    Year: {data.year} ({data.age}/{data.andreaAge})
                 </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-slate-500">
-                    <div>Brian Age: <span className="font-bold text-slate-700">{data.age}</span></div>
-                    <div>Andrea Age: <span className="font-bold text-slate-700">{data.andreaAge}</span></div>
-                </div>
-                <div className="flex justify-between items-center gap-4">
-                    <span className="text-slate-500">Net Worth:</span>
-                    <span className="font-mono font-bold text-emerald-600 text-sm">
-                        ${Math.round(data.netWorth).toLocaleString()}
-                    </span>
+                <div className="space-y-1">
+                    <div className="flex justify-between gap-4 text-emerald-600">
+                        <span>Property:</span><span className="font-mono">${Math.round(data.balances.property).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 text-blue-600">
+                        <span>Liquid Assets:</span><span className="font-mono">${Math.round(data.balances.liquid + data.balances.retirement + data.balances.inherited).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 text-red-500 border-t border-red-50 pt-1 mt-1">
+                        <span>Liabilities:</span><span className="font-mono">-${Math.round(data.balances.totalDebt).toLocaleString()}</span>
+                    </div>
+                    {data.balances.reverseMortgage > 0 && (
+                        <div className="flex justify-between gap-4 text-orange-500">
+                            <span>Reverse Mort:</span><span className="font-mono">-${Math.round(data.balances.reverseMortgage).toLocaleString()}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between gap-4 font-bold text-slate-800 border-t border-slate-100 pt-1 mt-1">
+                        <span>Net Worth:</span><span>${Math.round(data.netWorth).toLocaleString()}</span>
+                    </div>
                 </div>
             </div>
         );
@@ -84,7 +93,20 @@ export default function Dashboard() {
     // --- 2. PREPARE CHART DATA ---
     const chartData = useMemo(() => {
         if (!timeline || timeline.length === 0) return [];
-        return timeline.filter(t => t.month === 12 || t === timeline[timeline.length - 1]);
+        const filtered = timeline.filter(t => t.month === 12 || t.month === 0);
+
+        return filtered.map(t => ({
+            ...t,
+            // Assets (Positive)
+            assetCash: t.balances.cash,
+            assetJoint: t.balances.joint,
+            assetRetire: t.balances.retirement,
+            assetIra: t.balances.inherited,
+            assetProperty: t.balances.property,
+            // Liabilities (Negative)
+            debtStandard: -t.balances.totalDebt,
+            debtReverse: -t.balances.reverseMortgage
+        }));
     }, [timeline]);
 
     // --- 3. CALCULATE METRICS ---
@@ -135,25 +157,33 @@ export default function Dashboard() {
             {/* CHART ROW */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-96">
 
-                {/* MAIN NET WORTH CHART */}
+                {/* MAIN BALANCE SHEET CHART */}
                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 className="font-bold text-slate-700 mb-6">Net Worth Projection</h3>
+                    <h3 className="font-bold text-slate-700 mb-6">Projected Assets vs. Liabilities</h3>
                     <div className="flex-1 min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="colorNw" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
+                            <BarChart data={chartData} stackOffset="sign">
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                 <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(v) => `$${v/1000000}M`} />
-                                {/* UPDATED TOOLTIP */}
                                 <Tooltip content={<CustomTooltip />} />
-                                <Area type="monotone" dataKey="netWorth" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNw)" />
-                            </AreaChart>
+                                <Legend wrapperStyle={{fontSize:'10px', paddingTop:'10px'}} />
+                                <ReferenceLine y={0} stroke="#94a3b8" />
+
+                                {/* ASSETS (Positive Stack) */}
+                                <Bar dataKey="assetProperty" stackId="a" fill="#10b981" name="Property" />
+                                <Bar dataKey="assetRetire" stackId="a" fill="#3b82f6" name="Retirement" />
+                                <Bar dataKey="assetIra" stackId="a" fill="#6366f1" name="Inherited IRA" />
+                                <Bar dataKey="assetJoint" stackId="a" fill="#8b5cf6" name="Joint Inv." />
+                                <Bar dataKey="assetCash" stackId="a" fill="#ec4899" name="Cash" />
+
+                                {/* LIABILITIES (Negative Stack) */}
+                                <Bar dataKey="debtStandard" stackId="a" fill="#ef4444" name="Mortgages/Loans" />
+                                <Bar dataKey="debtReverse" stackId="a" fill="#f97316" name="Reverse Mortgage" />
+
+                                {/* NET WORTH LINE */}
+                                <Line type="monotone" dataKey="netWorth" stroke="#0f172a" strokeWidth={2} dot={false} name="Net Worth" />
+                            </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>

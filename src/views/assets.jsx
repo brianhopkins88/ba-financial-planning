@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { calculateAssetGrowth } from '../utils/asset_math';
 import { runFinancialSimulation } from '../utils/financial_engine';
-import { Plus, Trash2, TrendingUp, Home, DollarSign, PiggyBank, Briefcase, Calendar, PenTool, Link, ChevronDown, ChevronRight, X, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, Home, DollarSign, PiggyBank, Briefcase, Calendar, PenTool, Link, ChevronDown, ChevronRight, X, ArrowRight, Info, Settings, Lock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { NewConstructionPlanner, HomePurchasePlanner } from '../components/PropertyPlanner';
 import { isAfter, parseISO, addYears, format, getYear } from 'date-fns';
@@ -48,58 +48,87 @@ const InputGroup = ({ label, value, onChange, type = "text", step }) => (
     </div>
 );
 
+const GlobalRuleInput = ({ label, value, onChange, description, icon: Icon = Settings }) => (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+            <label className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1">
+                <Icon size={10} /> {label} (Global Rule)
+            </label>
+        </div>
+        <div className="relative">
+            <span className="absolute left-2 top-1.5 text-slate-400 text-xs">$</span>
+            <input
+                type="number" step="1000"
+                className="w-full pl-6 pr-2 py-1.5 border border-slate-200 rounded text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                value={value || 0}
+                onChange={(e) => onChange(parseFloat(e.target.value))}
+            />
+        </div>
+        <div className="text-[10px] text-slate-500 leading-tight bg-white p-2 rounded border border-slate-100 italic">
+            {description}
+        </div>
+    </div>
+);
+
 const CustomChartTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         const data = payload[0].payload;
-        // Total Positive (Ending Balance)
-        const total = (data.basis || 0) + (data.growth || 0) + (data.equity || 0);
+        // Calculate Ending Balance for Tooltip
+        const total = (data.openingBalance || 0) + (data.annualDeposits || 0) + (data.annualGrowth || 0) + (data.equity || 0) + (data.annualWithdrawals || 0);
+
         return (
             <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-xl text-xs z-50">
                 <div className="font-bold text-slate-700 mb-2 border-b border-slate-100 pb-1">
                     Year {data.year}
                 </div>
                 <div className="space-y-1">
-                     {/* Property Debt */}
-                     {data.debt > 0 && (
-                        <div className="flex justify-between gap-4">
-                            <span className="text-red-500">Linked Debt:</span>
-                            <span className="font-mono font-bold text-red-500">-${Math.round(data.debt).toLocaleString()}</span>
-                        </div>
+                     {/* Property Logic */}
+                     {data.type === 'property' && (
+                         <>
+                            {data.debt > 0 && (
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-red-500">Linked Debt:</span>
+                                    <span className="font-mono font-bold text-red-500">-${Math.round(data.debt).toLocaleString()}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between gap-4">
+                                <span className="text-emerald-600 font-bold">Net Equity:</span>
+                                <span className="font-mono font-bold text-emerald-600">${Math.round(data.equity).toLocaleString()}</span>
+                            </div>
+                         </>
                      )}
 
-                     {/* Property Equity */}
-                     {data.equity > 0 && (
-                        <div className="flex justify-between gap-4">
-                            <span className="text-emerald-600 font-bold">Net Equity:</span>
-                            <span className="font-mono font-bold text-emerald-600">${Math.round(data.equity).toLocaleString()}</span>
-                        </div>
-                     )}
-
-                     {/* Liquid Assets Components */}
-                     {data.basis > 0 && (
-                        <div className="flex justify-between gap-4">
-                            <span className="text-blue-600">Net Principal:</span>
-                            <span className="font-mono font-bold text-blue-600">${Math.round(data.basis).toLocaleString()}</span>
-                        </div>
-                     )}
-                     {data.growth > 0 && (
-                        <div className="flex justify-between gap-4">
-                            <span className="text-emerald-500">Accumulated Growth:</span>
-                            <span className="font-mono font-bold text-emerald-500">${Math.round(data.growth).toLocaleString()}</span>
-                        </div>
-                     )}
-
-                     {/* Annual Withdrawals */}
-                     {data.annualWithdrawals < 0 && (
-                        <div className="flex justify-between gap-4 border-t border-red-50 pt-1 mt-1 text-red-600">
-                            <span>Withdrawals (Year):</span>
-                            <span className="font-mono font-bold">${Math.round(data.annualWithdrawals).toLocaleString()}</span>
-                        </div>
+                     {/* Liquid Asset Logic */}
+                     {data.type === 'liquid' && (
+                         <>
+                            <div className="flex justify-between gap-4">
+                                <span className="text-slate-500">Previous Balance:</span>
+                                <span className="font-mono font-bold text-slate-600">${Math.round(data.openingBalance).toLocaleString()}</span>
+                            </div>
+                            {data.annualDeposits > 0 && (
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-blue-600">+ Deposits:</span>
+                                    <span className="font-mono font-bold text-blue-600">${Math.round(data.annualDeposits).toLocaleString()}</span>
+                                </div>
+                            )}
+                            {data.annualGrowth > 0 && (
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-emerald-500">+ Growth:</span>
+                                    <span className="font-mono font-bold text-emerald-500">${Math.round(data.annualGrowth).toLocaleString()}</span>
+                                </div>
+                            )}
+                            {data.annualWithdrawals < 0 && (
+                                <div className="flex justify-between gap-4 border-t border-red-50 pt-1 mt-1 text-red-600">
+                                    <span>- Withdrawals:</span>
+                                    <span className="font-mono font-bold">${Math.round(data.annualWithdrawals).toLocaleString()}</span>
+                                </div>
+                            )}
+                         </>
                      )}
 
                      <div className="pt-2 mt-1 border-t border-slate-100 flex justify-between gap-4">
                         <span className="font-bold text-slate-700">Ending Balance:</span>
-                        <span className="font-mono font-bold text-slate-800">${Math.round(total).toLocaleString()}</span>
+                        <span className="font-mono font-bold text-slate-800">${Math.round(Math.max(0, total)).toLocaleString()}</span>
                      </div>
                 </div>
             </div>
@@ -112,8 +141,11 @@ export default function Assets() {
   const { activeScenario, store, actions, simulationDate } = useData();
   const accounts = activeScenario.data.assets.accounts || {};
   const loans = activeScenario.data.loans || {};
-  const [selectedId, setSelectedId] = useState(null);
 
+  const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
+  const thresholds = assumptions.thresholds || { cashMin: 15000, cashMax: 30000, jointMin: 0, retirementMin: 300000 };
+
+  const [selectedId, setSelectedId] = useState(null);
   const [showPlanning, setShowPlanning] = useState(false);
 
   const grouped = useMemo(() => {
@@ -137,6 +169,7 @@ export default function Assets() {
   const handleUpdate = (field, val) => actions.updateScenarioData(`assets.accounts.${activeId}.${field}`, val);
   const handleInputUpdate = (field, val) => actions.updateScenarioData(`assets.accounts.${activeId}.inputs.${field}`, val);
   const handleFullUpdate = (path, val) => actions.updateScenarioData(`assets.accounts.${activeId}.${path}`, val);
+  const handleThresholdUpdate = (field, val) => actions.updateScenarioData(`assumptions.thresholds.${field}`, val);
 
   const updateIraSchedule = (index, value) => {
       const defaultSchedule = [0.1, 0.1, 0.1, 0.1, 0.1, 0.25, 0.25, 0.25, 0.25, 1.0];
@@ -163,29 +196,72 @@ export default function Assets() {
   // --- PROJECTION ENGINE SWITCH ---
   const projectionData = useMemo(() => {
      if (!activeAsset) return [];
-     const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
 
-     if (activeAsset.type === 'property' || activeAsset.type === 'inherited') {
-         const horizon = activeAsset.type === 'inherited' ? 15 : 35;
-         return calculateAssetGrowth(activeAsset, assumptions, loans, horizon);
-     } else {
-         const simulation = runFinancialSimulation(activeScenario, store.profiles);
+     // 1. Run Global Simulation
+     const simulation = runFinancialSimulation(activeScenario, store.profiles);
+     const events = simulation.events || [];
+
+     // 2. Determine "Active Window" based on Simulation Events
+     let endYear = 9999;
+     const soldEvent = events.find(e => e.text.includes(`Sold ${activeAsset.name}`));
+     if (soldEvent) {
+         endYear = parseInt(soldEvent.date.substring(0, 4));
+     }
+
+     if (activeAsset.type === 'property') {
+         // Get base equity/debt from static calculator
+         const rawData = calculateAssetGrowth(activeAsset, assumptions, loans, 35);
+
+         return rawData.map(row => {
+             // 3. OVERLAY: Fetch Reverse Mortgage Balance from Simulation
+             const isStart = row.year === assumptions.timing.startYear;
+             const targetMonth = isStart ? 0 : 12;
+
+             const simRow = simulation.timeline.find(t => t.year === row.year && t.month === targetMonth);
+             const rmBalance = simRow ? (simRow.balances.reverseMortgage || 0) : 0;
+
+             // Add RM to linked debt (show as Red Bar)
+             const totalDebt = row.debt + rmBalance;
+             const netEquity = Math.max(0, row.value - totalDebt);
+
+             if (row.year > endYear) {
+                 return { ...row, value: 0, equity: 0, debt: 0 };
+             }
+             return { ...row, debt: totalDebt, equity: netEquity, type: 'property' };
+         });
+     }
+     else {
+         // Liquid Assets (Cash, Joint, Retirement, Inherited)
          const timeline = simulation.timeline;
+         const filtered = timeline.filter(t => t.month === 12 || t.month === 0);
 
-         return timeline.filter(t => t.month === 12).map(row => {
+         const chartRows = filtered.map((row, idx) => {
              const typeKey = activeAsset.type;
-             const comp = row.components[typeKey] || { basis: 0, growth: 0 };
-             const flow = row.flows[typeKey] || { withdrawals: 0 };
+             const flow = row.flows[typeKey] || { deposits: 0, withdrawals: 0, growth: 0 };
+             const label = row.month === 0 ? 'Start' : row.year;
+             const endingBalance = row.balances[typeKey];
+
+             let openingBalance = 0;
+             if (idx > 0) {
+                 const prevRow = filtered[idx - 1];
+                 openingBalance = prevRow.balances[typeKey];
+             } else {
+                 openingBalance = endingBalance - flow.deposits - flow.growth + flow.withdrawals;
+                 if (openingBalance < 0.01) openingBalance = 0;
+             }
+
+             const isStart = row.month === 0;
+
              return {
-                 year: row.year,
-                 // Map Engine Components to Chart Keys
-                 basis: comp.basis,
-                 growth: comp.growth,
-                 annualWithdrawals: -flow.withdrawals, // Make negative for chart
-                 debt: 0,
-                 equity: 0 // Used for Property only
+                 year: label,
+                 openingBalance: openingBalance,
+                 annualDeposits: isStart ? 0 : flow.deposits,
+                 annualGrowth: isStart ? 0 : flow.growth,
+                 annualWithdrawals: isStart ? 0 : -flow.withdrawals,
+                 type: 'liquid'
              };
          });
+         return chartRows;
      }
   }, [activeAsset, activeScenario, loans, store.profiles]);
 
@@ -239,8 +315,14 @@ export default function Assets() {
                  <button onClick={() => { if(confirm("Delete this asset?")) actions.deleteAsset(activeId); }} className="text-slate-400 hover:text-red-600 p-2 rounded hover:bg-red-50"><Trash2 size={20}/></button>
               </div>
 
+              {/* MAIN CONFIGURATION GRID */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                   <InputGroup label="Current Balance / Value" type="number" step="1000" value={activeAsset.balance} onChange={(v) => handleUpdate('balance', v)} />
+
+                  {(['cash', 'joint', 'retirement'].includes(activeAsset.type)) && (
+                      <InputGroup label="Balance Date (Start)" type="date" value={activeAsset.inputs?.startDate || ''} onChange={(v) => handleInputUpdate('startDate', v)} />
+                  )}
+
                   {activeAsset.type === 'property' && (
                       <>
                         <InputGroup label="Active/Start Date" type="date" value={activeAsset.inputs?.startDate || ''} onChange={(v) => handleInputUpdate('startDate', v)} />
@@ -249,6 +331,7 @@ export default function Assets() {
                         <InputGroup label="Location Factor" type="number" step="0.001" value={activeAsset.inputs?.locationFactor || 0} onChange={(v) => handleInputUpdate('locationFactor', v)} />
                       </>
                   )}
+
                   {activeAsset.type === 'inherited' && (
                       <>
                         <InputGroup label="Date Received (Start)" type="date" value={activeAsset.inputs?.startDate || ''} onChange={(v) => handleInputUpdate('startDate', v)} />
@@ -282,6 +365,86 @@ export default function Assets() {
                   )}
               </div>
 
+              {/* PROPERTY: LINKED LIABILITIES SECTION (NEW) */}
+              {activeAsset.type === 'property' && (
+                  <div className="mb-8 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                      <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2"><Link size={14}/> Linked Liabilities (Debts against this Asset)</h3>
+                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                          {Object.values(loans).length === 0 && <div className="p-3 text-sm text-slate-400 italic">No liabilities defined in the system.</div>}
+                          {Object.values(loans).map(l => {
+                              const currentIds = activeAsset.inputs?.linkedLoanIds || (activeAsset.inputs?.linkedLoanId ? [activeAsset.inputs.linkedLoanId] : []);
+                              const isLinked = currentIds.includes(l.id);
+                              return (
+                                  <label key={l.id} className="flex items-center gap-3 p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer transition-colors last:border-0">
+                                      <input
+                                          type="checkbox"
+                                          className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                                          checked={isLinked}
+                                          onChange={() => toggleLinkedLoan(l.id)}
+                                      />
+                                      <div className="flex-1">
+                                          <div className={`text-sm font-bold ${isLinked ? 'text-blue-700' : 'text-slate-600'}`}>{l.name}</div>
+                                          <div className="text-[10px] text-slate-400 uppercase">{l.type} • Bal: ${Math.round(l.inputs.balance || l.inputs.principal).toLocaleString()}</div>
+                                      </div>
+                                      {isLinked && <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded">Linked</span>}
+                                  </label>
+                              );
+                          })}
+
+                          {/* Show System Reverse Mortgage if active */}
+                          {projectionData.some(r => r.debt > 0 && r.year > 2030) && ( // Heuristic check
+                              <div className="flex items-center gap-3 p-3 bg-amber-50 border-t border-amber-100">
+                                  <Lock size={16} className="text-amber-500" />
+                                  <div className="flex-1">
+                                      <div className="text-sm font-bold text-amber-800">System: Reverse Mortgage</div>
+                                      <div className="text-[10px] text-amber-600">Automated Line (See Liabilities Module)</div>
+                                  </div>
+                                  <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Auto-Linked</span>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              )}
+
+              {/* DYNAMIC GLOBAL RULES SECTION */}
+              {(activeAsset.type === 'cash' || activeAsset.type === 'joint' || activeAsset.type === 'retirement') && (
+                  <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                      {activeAsset.type === 'cash' && (
+                          <>
+                              <GlobalRuleInput
+                                  label="Surplus Cap (Max)"
+                                  value={thresholds.cashMax}
+                                  onChange={(v) => handleThresholdUpdate('cashMax', v)}
+                                  description="When Income > Expenses, surplus cash fills this bucket first. Any excess flows to Joint Investment."
+                              />
+                              <GlobalRuleInput
+                                  label="Cash Floor (Min)"
+                                  value={thresholds.cashMin}
+                                  onChange={(v) => handleThresholdUpdate('cashMin', v)}
+                                  description="When Expenses > Income, cash is drained down to this floor before tapping investments."
+                              />
+                          </>
+                      )}
+                      {activeAsset.type === 'joint' && (
+                          <GlobalRuleInput
+                              label="Depletion Floor (Min)"
+                              value={thresholds.jointMin}
+                              onChange={(v) => handleThresholdUpdate('jointMin', v)}
+                              description="This account will be drained down to this minimum balance before the engine taps Retirement accounts."
+                          />
+                      )}
+                      {activeAsset.type === 'retirement' && (
+                          <GlobalRuleInput
+                              label="Safety Floor (RM Trigger)"
+                              value={thresholds.retirementMin}
+                              onChange={(v) => handleThresholdUpdate('retirementMin', v)}
+                              description="If 401k falls to this level and deficits persist, the Reverse Mortgage (R-HELOC) is activated to preserve remaining funds."
+                          />
+                      )}
+                  </div>
+              )}
+
+              {/* INHERITED IRA TABLE */}
               {activeAsset.type === 'inherited' && (
                   <div className="mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                       <div className="flex justify-between items-center mb-4">
@@ -363,37 +526,13 @@ export default function Assets() {
                                         </div>
                                         <span className="text-[10px] text-orange-600/70">Property will be sold and net equity deposited to Joint/Cash.</span>
                                 </div>
-
-                                <div className="flex flex-col space-y-1">
-                                        <label className="text-[10px] font-bold text-orange-700 uppercase">Linked Loans (Payoff on Sale)</label>
-                                        <div className="border border-orange-200 rounded bg-white max-h-32 overflow-y-auto p-2 shadow-sm">
-                                            {Object.values(loans).length === 0 && <div className="text-xs text-slate-400 italic p-2">No loans available.</div>}
-                                            {Object.values(loans).map(l => {
-                                                const currentIds = activeAsset.inputs?.linkedLoanIds || (activeAsset.inputs?.linkedLoanId ? [activeAsset.inputs.linkedLoanId] : []);
-                                                const isLinked = currentIds.includes(l.id);
-                                                return (
-                                                    <label key={l.id} className="flex items-center gap-2 text-xs py-1.5 px-2 cursor-pointer hover:bg-orange-50 rounded transition-colors">
-                                                        <input
-                                                            type="checkbox"
-                                                            className="rounded text-orange-600 focus:ring-orange-500"
-                                                            checked={isLinked}
-                                                            onChange={() => toggleLinkedLoan(l.id)}
-                                                        />
-                                                        <div className="flex flex-col">
-                                                            <span className={isLinked ? 'font-bold text-orange-800' : 'text-slate-600'}>{l.name}</span>
-                                                            <span className="text-[9px] text-slate-400 uppercase">{l.type} • Bal: ${Math.round(l.inputs.balance || l.inputs.principal).toLocaleString()}</span>
-                                                        </div>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                </div>
                             </div>
                           </div>
                       )}
                   </div>
               )}
 
+              {/* FUTURE CONSTRUCTION/PURCHASE */}
               {isFutureProperty && (
                    <div className="mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200 ring-2 ring-blue-100">
                        <div className="flex justify-between items-center mb-6">
@@ -411,6 +550,7 @@ export default function Assets() {
                    </div>
               )}
 
+              {/* CHART VISUALIZATION */}
               {!isFutureProperty && (
                 <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 h-96 flex flex-col">
                     <h3 className="font-bold text-slate-600 mb-4 flex items-center gap-2"><TrendingUp size={16}/> Projected Value (Stacked Analysis)</h3>
@@ -424,24 +564,21 @@ export default function Assets() {
                                 <Legend wrapperStyle={{fontSize:'12px', paddingTop:'10px'}} />
                                 <ReferenceLine y={0} stroke="#94a3b8" />
 
-                                {/* PROPERTY STACKS (Only render for property) */}
-                                {activeAsset.type === 'property' && <Bar dataKey="debt" stackId="p" fill="#ef4444" name="Linked Debt" radius={[0, 0, 0, 0]} />}
-                                {activeAsset.type === 'property' && <Bar dataKey="equity" stackId="p" fill="#10b981" name="Net Equity" radius={[2, 2, 0, 0]} />}
-
-                                {/* LIQUID STACKS (Only render for liquid) */}
-                                {activeAsset.type !== 'property' && activeAsset.type !== 'inherited' && (
+                                {/* PROPERTY STACKS */}
+                                {activeAsset.type === 'property' && (
                                     <>
-                                        <Bar dataKey="basis" stackId="a" fill="#3b82f6" name="Principal/Deposits" radius={[0, 0, 0, 0]} />
-                                        <Bar dataKey="growth" stackId="a" fill="#10b981" name="Accumulated Growth" radius={[2, 2, 0, 0]} />
-                                        <Bar dataKey="annualWithdrawals" stackId="a" fill="#ef4444" name="Annual Withdrawals" radius={[0, 0, 2, 2]} />
+                                        <Bar dataKey="debt" stackId="p" fill="#ef4444" name="Linked Debt" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="equity" stackId="p" fill="#10b981" name="Net Equity" radius={[2, 2, 0, 0]} />
                                     </>
                                 )}
 
-                                {/* IRA STACKS */}
-                                {activeAsset.type === 'inherited' && (
+                                {/* LIQUID STACKS (Waterfall: Opening + Dep + Growth - Withdrawal) */}
+                                {activeAsset.type !== 'property' && (
                                     <>
-                                        <Bar dataKey="equity" stackId="i" fill="#10b981" name="Balance" radius={[2, 2, 0, 0]} />
-                                        <Bar dataKey="cumulativeWithdrawals" stackId="i" fill="#f59e0b" name="Cumulative Withdrawals" radius={[2, 2, 0, 0]} />
+                                        <Bar dataKey="openingBalance" stackId="a" fill="#94a3b8" name="Opening Balance" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="annualDeposits" stackId="a" fill="#3b82f6" name="New Deposits" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="annualGrowth" stackId="a" fill="#10b981" name="Growth" radius={[2, 2, 0, 0]} />
+                                        <Bar dataKey="annualWithdrawals" stackId="a" fill="#ef4444" name="Annual Withdrawals" radius={[0, 0, 2, 2]} />
                                     </>
                                 )}
                             </BarChart>
@@ -449,7 +586,7 @@ export default function Assets() {
                     </div>
                     <div className="mt-4 text-xs text-slate-400 italic flex justify-between">
                          <span>* Charts show end-of-year values derived from the <strong>Integrated Financial Simulation</strong>.</span>
-                         {activeAsset.type === 'joint' && <span className="text-blue-600 font-bold">* Red bars show annual outflow. Blue/Green show remaining balance.</span>}
+                         <span className="text-blue-600 font-bold">* Charts show end-of-year projections. Red bars indicate withdrawals.</span>
                     </div>
                 </div>
               )}

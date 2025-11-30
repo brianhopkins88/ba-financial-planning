@@ -34,15 +34,15 @@
               "bonus": { "amount": 20000, "month": 3 },
               "birthYear": 1966,
               "birthMonth": 5,
-              "socialSecurity": { "startAge": 70, "monthlyAmount": 4500 }
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3963 }
           },
           "andrea": {
               "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10,
               "bonus": { "amount": 0, "month": 12 },
               "birthYear": 1965,
               "birthMonth": 2,
-              "socialSecurity": { "startAge": 70, "monthlyAmount": 2500 },
-              "pension": { "monthlyAmount": 1200, "inflationAdjusted": true }
+              "socialSecurity": { "startAge": 670, "monthlyAmount": 3300 },
+                "pension": { "monthlyAmount": 2541, "inflationAdjusted": true }
           },
           "workStatus": {
             "2026": { "brian": 1.0, "andrea": 1.0 },
