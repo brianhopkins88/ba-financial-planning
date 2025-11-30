@@ -827,7 +827,7 @@ To support analysis, summarization, and downstream reporting/analytics, the Fina
 
 ## 5. Version History
 
-- **0.10:**
+- **0.91:**
   - Integrated **time-phased Expense Profiles** (2.3.1) and extended **Profiles** section (1.3) to support profile sequences.
   - Added explicit **housing transition model**:
     - Single active primary property at a time with non-owner periods modeled via Expense Profiles.
