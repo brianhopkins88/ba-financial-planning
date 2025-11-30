@@ -37,7 +37,12 @@
       }
     },
     "assets": {
-      "joint": 99000, "inheritedIRA": 376000, "retirement401k": 950000, "homeValue": 1450000
+      "accounts": {
+        "acct_joint_default": { "id": "acct_joint_default", "type": "joint", "name": "Joint Investment", "balance": 99000, "owner": "joint", "active": true, "growthType": "market" },
+        "acct_ira_default": { "id": "acct_ira_default", "type": "inherited", "name": "Inherited IRA", "balance": 376000, "owner": "brian", "active": true, "growthType": "market", "inputs": { "endDate": "2035-12-31" } },
+        "acct_401k_default": { "id": "acct_401k_default", "type": "retirement", "name": "Combined 401k", "balance": 950000, "owner": "joint", "active": true, "growthType": "market" },
+        "acct_prop_default": { "id": "acct_prop_default", "type": "property", "name": "HGV Home", "balance": 1450000, "owner": "joint", "active": true, "inputs": { "buildYear": 2018, "zipCode": "92029", "locationFactor": 0 } }
+      }
     },
     "expenses": {
       "activeProfileId": "prof_initial",

@@ -1,5 +1,83 @@
 # This file contains notes about the work that has happened so far
+
+## 2025-11-29: Session 11 (Version 0.9 requirements and architecture overhaul)
+
+**Status:** Performed a deep analysis and update of the application requirements, generated user stories for better implementation and testing, and updates the architecture. 
+**Focus:** Preparing to do a deep refactoring of the application. 
+
+- Specified detailed rules for asset handling, debts, expenses and future projections. Established a place holder for a future analysis module. 
+- Update that data handling and persistence requirements.
+- Updated the requirements for assumptions and profile handling.
+- Created a set of user stories in a user stories document.
+- Update the architecture document to be organized by a traditional BDAT stack approach.
+
+### **Accomplishments**
+
+## 2025-11-27: Session 10 (Financial Engine & Property Planners)
+
+**Status:** Phase 4 (Financial Engine) Core Complete. Assets Module Enhanced.
+**Focus:** Building the central simulation logic, the Dashboard visualization, and advanced Property Planning tools.
+
+### **Accomplishments**
+
+- **Financial Engine (`src/utils/financial_engine.js`):**
+  - Built the core simulation loop (420 months / 35 years).
+  - **Cash Flow Waterfall:** Implemented the hierarchy: Income -> Expenses -> Joint Savings -> Inherited IRA -> 401k -> Reverse Mortgage.
+  - **Auto-Logic:** Engine now automatically triggers a "Reverse Mortgage" state if liquid cash is depleted, tracking its balance separately.
+  - **Event Logging:** System records critical events (e.g., "Inherited IRA Depleted", "Reverse Mortgage Started") for reporting.
+
+- **Dashboard Module (`src/views/dashboard.jsx`):**
+  - Created a visual interface for the Financial Engine.
+  - **Net Worth Chart:** 35-year area chart showing the trajectory of wealth.
+  - **Event Log:** Scrollable list of auto-generated simulation events.
+  - **Key Metrics:** Cards for Projected Net Worth, Ending Liquidity, and Solvency Status.
+
+- **Advanced Property Planning (`src/components/PropertyPlanners.jsx`):**
+  - **New Construction Wizard:** Specialized form for planning custom builds (Base Price + Upgrades - Credits). Includes a "Cash to Close" calculator that pulls funds from specific asset accounts.
+  - **Loan Integration:** The planner can auto-create a detailed "Construction Loan" in the Loans module based on user inputs.
+  - **Future Logic:** Updated `assets.jsx` to detect "Future" properties (Start Date > Current Date) and swap the view from the Growth Chart to the Planning Wizard.
+
+- **Architecture:**
+  - **DataContext:** Refactored `addLoan` to accept override parameters, enabling programmatic loan creation from other modules.
+  - **App Shell:** Wired `Dashboard` as the default landing view.
+
+### **Next Steps**
+
+- Define additional asset type requirements - 401k, Joint, cash accounts
+- **Smoke Testing:** 
+  - Test the assets module fully
+    - Test the new construction property planner carefully
+    - Test/ add the asset value future value viewer for individual assets or all assets. 
+  - Test retest the expenses, income, assumptions
+  - Test the dashboard, recaculate function
+    - Verify that various rules work correct, eg. "Cash to Close" logic in the Property Planner correctly reduces asset balances in the simulation.
+- **Refinement:** Add more granular control over the "Reverse Mortgage" terms (currently hardcoded to 6%).
+- **UI Polish:** Expand the Dashboard to show a breakdown of Expenses by category over time.
+
+## 2025-11-27: Session 1 (Assets Module Phase 1 & Requirements v0.8)
+
+**Status:** Phase 4 (Assets) Started. Requirements v0.8 Finalized. **Focus:** Implementing the Asset Registry, resolving build errors, and solidifying complex modeling rules.
+
+### **Accomplishments**
+
+- **Requirements Specification v0.8:**
+  - Consolidated all new rules for **Inherited IRA** (10-year rule, deficit overrides), **Property** (New Construction planner, Valuation Algorithm), and **Financial Engine** (Reverse Mortgage auto-creation, Cash Flow Waterfall).
+  - Resolved architectural conflict: Established `financial_engine.js` as the single source of truth for all projections.
+- **Asset Module Foundation:**
+  - **Data Migration:** Implemented a robust migration script in `DataContext` to convert legacy "flat" assets (`assets.joint`) into a scalable `assets.accounts` registry.
+  - **UI Implementation:** Built `src/views/assets.jsx` featuring a 4-box layout (Retirement, IRA, Joint/Cash, Property) and an interactive **Growth Projection Chart**.
+  - **Logic:** Implemented the `projectHomeValue` algorithm (New/Mid/Mature phases) in `src/utils/asset_math.js`.
+  - **Routing:** Integrated the Assets view into the App Shell (`App.jsx`, `Sidebar.jsx`) and removed legacy inputs from Assumptions.
+- **Bug Fixes:**
+  - Resolved a build error regarding `hgv_data.json` by ensuring the file is explicitly generated and correctly located.
+
+### **Next Steps (Session 2)**
+
+- **Property Planning Submodules:** Build the "New Construction" and "Home Purchase" wizards.
+- **Financial Engine:** Implement the `financial_engine.js` core to handle the Cash Flow Waterfall, Reverse Mortgage auto-logic, and the 35-year projection loop.
+
 ## 2025-11-27: Session 9 (Expenses Module Finalization & Projections)
+
 **Status:** Phase 3 (Cash Flow) Complete / Phase 4 (Financial Engine) Prep.
 **Focus:** Advanced Expense Planning, Long-Range Projections, and Loan Integration.
 
