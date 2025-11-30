@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { Plus, Trash2, Save, Receipt, ChevronDown, ChevronRight, Calendar, CheckSquare, Square, CreditCard, Pencil, Copy, BarChart3, Table, List, DownloadCloud, Palmtree, Settings, MoreHorizontal, TrendingUp } from 'lucide-react';
-import { parseISO, isBefore, isAfter, format, addMonths, differenceInMonths, getYear, getMonth, isSameMonth, startOfMonth, addYears } from 'date-fns';
+import { Plus, Trash2, Save, Receipt, ChevronDown, ChevronRight, Calendar, CheckSquare, Square, CreditCard, Pencil, Copy, BarChart3, Table, List, Palmtree, Settings } from 'lucide-react';
+import { parseISO, isAfter, format, addMonths, startOfMonth, getYear } from 'date-fns';
 import { calculateFixedLoan, calculateRevolvingLoan } from '../utils/loan_math';
 
 // --- UTILITY COMPONENTS ---
@@ -115,11 +115,14 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
     const summaryData = useMemo(() => {
         const startYear = getYear(simulationDate);
         const projectionYears = 35;
-        const inflationRate = activeScenario.data.globals.inflation.general || 0.025;
+
+        // FIXED: Updated path to assumptions
+        const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || { inflation: { general: 0.025 } };
+        const inflationRate = assumptions.inflation.general || 0.025;
         const brianBirthYear = activeScenario.data.income.brian.birthYear || 1966;
 
-        // 1. Pre-Calculate Loan Schedules (Correctly handling Payoff Dates)
-        const loanAnnualTotals = {}; // Structure: { "2026": { "heloc": { name: "HELOC", amount: 12000 } } }
+        // 1. Pre-Calculate Loan Schedules
+        const loanAnnualTotals = {};
 
         Object.values(activeScenario.data.loans).forEach(loan => {
             if (!loan.active) return;
@@ -127,25 +130,19 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
             const stratId = loan.activeStrategyId || 'base';
             const strategy = loan.strategies?.[stratId] || { extraPayments: {} };
 
-            // Run the actual math engine to get the schedule
             let result;
             if (loan.type === 'revolving') {
                 result = calculateRevolvingLoan(loan.inputs, strategy.extraPayments);
             } else {
-                // Treat Mortgage and Fixed the same for amortization
                 result = calculateFixedLoan(loan.inputs, strategy.extraPayments);
             }
 
-            // Aggregate payments by calendar year
             result.schedule.forEach(row => {
-                const y = row.date.split('-')[0]; // Extract "2026" from "2026-02"
-
+                const y = row.date.split('-')[0];
                 if (!loanAnnualTotals[y]) loanAnnualTotals[y] = {};
                 if (!loanAnnualTotals[y][loan.id]) {
                     loanAnnualTotals[y][loan.id] = { name: loan.name, amount: 0 };
                 }
-
-                // Sum actual payment (Principal + Interest + Extra)
                 loanAnnualTotals[y][loan.id].amount += row.payment;
             });
         });
@@ -167,7 +164,7 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
             // A. Inflated Recurring Expenses
             const recurring = (baseBills + baseHome + baseLiving + baseImpounds) * inflationMult;
 
-            // B. Loans (Lookup from pre-calculated map)
+            // B. Loans
             let loanTotal = 0;
             const loanDetails = [];
             const yearLoans = loanAnnualTotals[String(year)];
@@ -192,7 +189,6 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
             let bracketLabel = "";
             const brackets = activeScenario.data.expenses.retirementBrackets || {};
 
-            // Check which bracket applies (65, 70, 75, 80, 85, 90)
             const activeBracket = [90, 85, 80, 75, 70, 65].find(b => brianAge >= b && brianAge < b + 5);
             if (activeBracket) {
                  funMoneyTotal = brackets[activeBracket] || 0;
@@ -219,7 +215,6 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
         return data;
     }, [activeScenario, simulationDate]);
 
-    // Fixed scale max
     const FIXED_MAX = 300000;
 
     return (
@@ -227,13 +222,11 @@ const ExpenseSummary = ({ activeScenario, simulationDate }) => {
 
             {/* BAR CHART */}
             <div className="h-40 flex items-end gap-1 mb-6 border-b border-slate-100 pb-2 overflow-x-auto relative">
-                {/* Horizontal Grid Line for 300k Max */}
                 <div className="absolute top-0 left-0 right-0 border-t border-slate-200 border-dashed pointer-events-none">
                      <span className="text-[9px] text-slate-400 absolute right-0 -top-4">Max: $300k</span>
                 </div>
 
                 {summaryData.map((d, i) => {
-                    // Capped percentage for visual bar, but track if it exceeds
                     const rawPct = (d.total / FIXED_MAX) * 100;
                     const height = Math.min(rawPct, 100);
                     const isOverflow = rawPct > 100;
@@ -535,7 +528,10 @@ export default function Expenses() {
   if (!editData.impounds) editData.impounds = [];
 
   const profileSequence = editData.profileSequence || [];
-  const globalStart = activeScenario.data.globals.timing;
+
+  // FIXED: Updated path to assumptions
+  const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
+  const globalStart = assumptions.timing || { startYear: 2026, startMonth: 1 };
   const globalStartDateStr = `${globalStart.startYear}-${String(globalStart.startMonth).padStart(2, '0')}-01`;
 
   // --- DERIVE EFFECTIVE PROFILE ---
@@ -589,8 +585,6 @@ export default function Expenses() {
     // Find the row for the current simulation month
     const row = calc.schedule.find(r => r.date === currentMonthKey);
 
-    // If no row found, it's either future (not started) or past (paid off)
-    // We filter out paid off loans to avoid showing $0
     if (!row) return null;
 
     return {
@@ -604,7 +598,6 @@ export default function Expenses() {
     };
   }).filter(Boolean);
 
-  // Split Loans
   const mortgageLoans = activeLoanObjects.filter(l => l.type === 'mortgage');
   const otherLoans = activeLoanObjects.filter(l => l.type !== 'mortgage');
 

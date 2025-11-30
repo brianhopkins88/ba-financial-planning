@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, FilePlus, Download, RotateCcw, ChevronDown, Copy, Trash2, Pencil, TrendingUp, PiggyBank } from 'lucide-react';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, FilePlus, Download, RotateCcw, ChevronDown, Copy, Trash2, Pencil, TrendingUp, PiggyBank, RefreshCw } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
@@ -9,8 +9,6 @@ export default function Sidebar({ currentView, setView }) {
   const fileInputRef = useRef(null);
   const [uploadMode, setUploadMode] = useState(null);
 
-  // ... (Keep existing Global Menu Logic - Omitted for brevity, assuming standard imports work) ...
-  // Re-implementing simplified logic to ensure file integrity.
   const handleExportScenario = () => {
     const usedProfileIds = new Set();
     activeScenario.data.income?.profileSequence?.forEach(p => usedProfileIds.add(p.profileId));
@@ -24,6 +22,7 @@ export default function Sidebar({ currentView, setView }) {
     link.download = `${activeScenario.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(link); link.click(); document.body.removeChild(link); setIsMenuOpen(false);
   };
+
   const handleMenuItemClick = (action) => {
       setIsMenuOpen(false);
       if(action === 'save') { actions.saveAll(); alert("Scenario saved."); }
@@ -31,8 +30,13 @@ export default function Sidebar({ currentView, setView }) {
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
       if(action === 'upload_current') { setUploadMode('current'); fileInputRef.current.click(); }
       if(action === 'upload_new') { setUploadMode('new'); fileInputRef.current.click(); }
-      if(action === 'clear') { if(confirm("Clear current?")) actions.resetActiveScenario(); }
+      if(action === 'clear') {
+          if(confirm("Are you sure you want to reset the current scenario to defaults? This will overwrite your changes.")) {
+              actions.resetActiveScenario();
+          }
+      }
   };
+
   const onFileChange = (e) => {
       const file = e.target.files[0]; if(!file) return;
       const reader = new FileReader();
@@ -47,7 +51,6 @@ export default function Sidebar({ currentView, setView }) {
       reader.readAsText(file);
   };
 
-  // ... (Keep Scenario Manager Logic) ...
   const handleScenarioClick = (id) => { actions.switchScenario(id); setIsScenarioListOpen(false); };
   const handleNewScenario = () => { const n = prompt("Name:"); if(n) { actions.createScenario(n); setIsScenarioListOpen(false); } };
 
@@ -69,7 +72,7 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v8.8</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v0.91</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
@@ -80,7 +83,9 @@ export default function Sidebar({ currentView, setView }) {
                     <div className="h-px bg-slate-100 my-1"></div>
                     <button onClick={() => handleMenuItemClick('upload_current')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Upload to Current</button>
                     <button onClick={() => handleMenuItemClick('upload_new')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><FilePlus size={14} className="text-purple-600"/> Upload as New</button>
+                    <div className="h-px bg-slate-100 my-1"></div>
                     <button onClick={() => handleMenuItemClick('create_blank')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Plus size={14} className="text-slate-600"/> Create Blank</button>
+                    <button onClick={() => handleMenuItemClick('clear')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm text-red-600 hover:bg-red-50"><RefreshCw size={14}/> Reset to Defaults</button>
                 </div>
             </>
         )}

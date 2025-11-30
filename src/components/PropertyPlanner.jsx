@@ -1,8 +1,5 @@
-{
-type: "file",
-fileName: "src/components/PropertyPlanners.jsx",
-fullContent: `import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Calculator, ArrowRight, DollarSign, ExternalLink } from 'lucide-react';
+import React from 'react';
+import { Plus, Trash2, ExternalLink } from 'lucide-react';
 
 // --- SHARED UTILS ---
 const Section = ({ title, children, rightAction }) => (
@@ -15,7 +12,7 @@ const Section = ({ title, children, rightAction }) => (
     </div>
 );
 
-const LineItem = ({ label, value, onChange, type="number", onRemove }) => (
+const LineItem = ({ label, value, onChange, type="number", onRemove, step }) => (
     <div className="flex justify-between items-center mb-2 group">
         <span className="text-sm text-slate-600 flex-1">{label}</span>
         <div className="flex items-center gap-2">
@@ -23,6 +20,7 @@ const LineItem = ({ label, value, onChange, type="number", onRemove }) => (
                 <span className="absolute left-2 top-1.5 text-slate-400 text-xs">$</span>
                 <input
                     type={type}
+                    step={step}
                     className="w-full pl-6 pr-2 py-1 border border-slate-200 rounded text-right text-sm font-mono font-bold text-slate-700 focus:border-blue-500 outline-none"
                     value={value}
                     onChange={(e) => onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
@@ -53,26 +51,26 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts }
         updateAsset('inputs.purchasePlan', newPlan);
     };
 
-    // Calculations
     const totalCosts = (plan.costs.base + plan.costs.structural + plan.costs.design + plan.costs.lot) - plan.costs.credits + plan.costs.custom.reduce((s,i) => s + i.amount, 0);
     const totalClosing = plan.closing.items.reduce((s,i) => s + i.amount, 0) + plan.closing.prepaids;
     const depositsPaid = plan.deposits.contract + (plan.costs.design * plan.deposits.designPct);
     const totalCashToClose = (totalCosts + totalClosing) - depositsPaid - plan.loan.amount;
 
-    // Loan Creator
     const handleCreateLoan = () => {
+        // FIXED: Use asset start date if available, otherwise default
+        const startDate = asset.inputs.startDate || '2026-06-01';
         actions.addLoan({
-            name: \`Loan: \${asset.name}\`,
+            name: `Loan: ${asset.name}`,
             type: 'mortgage',
             inputs: {
                 principal: plan.loan.amount,
                 rate: plan.loan.rate,
                 termMonths: plan.loan.term,
-                startDate: asset.inputs.startDate || '2026-06-01',
-                payment: 0 // Will auto-calc
+                startDate: startDate,
+                payment: 0
             }
         });
-        alert("Estimated Loan created in Loans Module. Please review it there.");
+        alert(`Loan created starting ${startDate}. Check Loans module.`);
     };
 
     return (
@@ -103,9 +101,6 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts }
                     <Section title="2. Loan Estimation" rightAction={<button onClick={handleCreateLoan} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center gap-1">Create Loan <ExternalLink size={10}/></button>}>
                         <LineItem label="Loan Amount" value={plan.loan.amount} onChange={v => updatePlan('loan.amount', v)} />
                         <LineItem label="Interest Rate (dec)" value={plan.loan.rate} onChange={v => updatePlan('loan.rate', v)} step="0.001" />
-                        <div className="text-xs text-slate-400 italic mt-2">
-                             * Clicking "Create Loan" adds this to the Loans module for monthly debt service calculation.
-                        </div>
                     </Section>
                 </div>
 
@@ -119,14 +114,14 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts }
                         </div>
                         <div className="flex justify-between items-center mb-2 text-sm text-slate-400">
                             <span>Calc Design Deposit:</span>
-                            <span>\${(plan.costs.design * plan.deposits.designPct).toLocaleString()}</span>
+                            <span>${(plan.costs.design * plan.deposits.designPct).toLocaleString()}</span>
                         </div>
                         <LineItem label="Est. Prepaids (Tax/Ins)" value={plan.closing.prepaids} onChange={v => updatePlan('closing.prepaids', v)} />
                     </Section>
 
                     <Section title="4. Funding Logic (Source of Cash)">
                         <div className="mb-4 text-sm text-slate-600">
-                            Total Cash Needed at Close: <span className="font-bold text-red-500">\${totalCashToClose.toLocaleString()}</span>
+                            Total Cash Needed at Close: <span className="font-bold text-red-500">${totalCashToClose.toLocaleString()}</span>
                         </div>
                         <div className="space-y-2">
                             {plan.funding.map((fund, idx) => (
@@ -177,7 +172,6 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts }
 
 // --- SIMPLE HOME PURCHASE PLANNER ---
 export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts }) => {
-    // Simplified version of the above
     const plan = asset.inputs.purchasePlan || {
         costs: { base: 0, closing: 0 },
         loan: { amount: 0, rate: 0.065 },
@@ -195,14 +189,16 @@ export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts }) =
     const cashNeeded = (plan.costs.base + plan.costs.closing) - plan.loan.amount;
 
     const handleCreateLoan = () => {
+        // FIXED: Use asset start date if available
+        const startDate = asset.inputs.startDate || '2026-01-01';
         actions.addLoan({
-            name: \`Loan: \${asset.name}\`,
+            name: `Loan: ${asset.name}`,
             type: 'mortgage',
             inputs: {
                 principal: plan.loan.amount,
                 rate: plan.loan.rate,
                 termMonths: 360,
-                startDate: asset.inputs.startDate || '2026-01-01',
+                startDate: startDate,
                 payment: 0
             }
         });
@@ -225,7 +221,7 @@ export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts }) =
             <Section title="Funding (Cash to Close)">
                 <div className="mb-4 font-bold text-center text-xl text-slate-700 border-b border-slate-100 pb-2">
                     <div className="text-xs text-slate-400 uppercase font-normal mb-1">Total Cash Needed</div>
-                    \${cashNeeded.toLocaleString()}
+                    ${cashNeeded.toLocaleString()}
                 </div>
                  <div className="space-y-2">
                     {plan.funding.map((fund, idx) => (
@@ -270,5 +266,4 @@ export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts }) =
             </Section>
         </div>
     );
-};`
-}
+};

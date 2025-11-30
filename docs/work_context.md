@@ -1,5 +1,93 @@
 # This file contains notes about the work that has happened so far
 
+## 2025-11-30: Session 15 (Assets Visualization & Component Engine)
+
+**Status:** Phase 5 (Refinement) In Progress. **Focus:** Overhauling Asset Charts to be analytical (Stacked/Bi-Directional) and implementing component-based flow tracking in the Financial Engine.
+
+### **Accomplishments**
+
+- **Asset Visualization Upgrade (`src/views/assets.jsx`):**
+  - Switched from Area/Line charts to **Stacked Bar Charts** for all asset types.
+  - **Properties:** Now displays **Linked Debt** (Red) vs. **Net Equity** (Green) for clear leverage analysis.
+  - **Liquid Assets:** Implemented a **Bi-Directional** chart showing Opening Basis + Growth (Up) vs. Annual Withdrawals (Down/Red), making cash flow impacts visible.
+  - **Inherited IRA:** Added a specific view for **Remaining Balance** vs. **Cumulative Withdrawals**, highlighting total wealth extraction.
+- **Financial Engine Refactor (`src/utils/financial_engine.js`):**
+  - Added **Component Tracking**: The engine now tracks `basis` (principal) and `growth` (earnings) separately for every dollar.
+  - Added **Annual Flow Logic**: New `annualFlows` state resets yearly to capture distinct `deposits`, `withdrawals`, and `growth` events for the new charts.
+  - **Withdrawal Logic:** Withdrawals now reduce `basis` and `growth` proportionally to maintain accurate tax/basis tracking.
+- **Asset Math Utilities (`src/utils/asset_math.js`):**
+  - Updated `projectHomeValue` to explicitly calculate linked loan balances for every projection year.
+  - Standardized output keys (`equity`, `debt`, `value`) across all projection types to unify the UI components.
+
+## 2025-11-30: Session 14 (User Story 7 - Housing Transitions & Engine Hardening)
+
+
+
+**Status:** Phase 5 (Refinement) In Progress. Requirements Updated to v0.95. **Focus:** Implementing complex housing transition logic, refining retirement income streams (SS/Pension), and overhauling the Inherited IRA and Dashboard for detailed analysis.
+
+### **Accomplishments**
+
+- **Housing Transitions (User Story 7):**
+  - **Assets UI:** Added a "Sale & Mortgage Planning" section to Property assets. Users can now set a **Planned Sell Date** and link multiple loans (e.g., Mortgage + HELOC) to be paid off upon sale.
+  - **Financial Engine:** Implemented `processPropertyEvents` to handle:
+    - **Sale:** Calculates market value, deducts transaction costs (6%), pays off all linked loans, and deposits net equity into the Joint account.
+    - **Purchase:** Deducts "Cash to Close" from specified liquid assets.
+    - **Closed Loan Tracking:** Ensures monthly payments stop immediately after a loan is paid off via sale.
+- **Retirement Income Logic:**
+  - **FICA:** Added configuration for Start Age and Monthly Amount. Implemented **First-Year Proration** based on information and retirement years. 
+  - **Pension:** Added configuration for Andrea's pension, which auto-starts the first year her FTE drops to 0.
+  - **Inflation:** Applied general inflation to Base Salary, Bonus, Social Security, and Pension streams (if flagged).
+- **Inherited IRA Overhaul:**
+  - **10-Year Rule:** Implemented strict logic to deplete the account over 10 years.
+  - **Schedule Table:** Added a configurable 10-year withdrawal percentage table in the UI.
+  - **Start Date Logic:** Withdrawals now shift to the *next* calendar year if the account start date is after Jan 15th.
+  - **Progressive Tax:** Implemented tiered tax rates (32%, 40%, 48%) for large withdrawals exceeding $200k/$400k/$600k.
+- **Financial Engine Refinements:**
+  - **Net Worth Fix:** Updated formula to correctly subtract **Reverse Mortgage** and **Active Loan Balances** from total assets.
+  - **Reverse Mortgage:** Added **Forced Sale** trigger if the R-HELOC balance exceeds the age-based LTV limit (40%/50%/60%).
+  - **IARRA:** Implemented the "Investment Account Risk Reduction Algorithm" to taper investment returns from 7% down to 3.5% as the owner ages.
+- **Dashboard Upgrade:**
+  - **Drill-Down Table:** Added a collapsible year-by-year spreadsheet view showing exact Income, Expenses, Asset Balances, and Cash Flow.
+  - **Asset/Liability Curves:** Added a new multi-line chart to visualize Home Equity vs. Debt over time.
+  - **Tooltips:** Updated charts to display both Brian's and Andrea's ages on hover.
+
+
+
+### **Next Steps**
+
+- **User Testing:** Continue verifying the "Out of Money" dates against manual spreadsheet models.
+
+## 2025-11-30: Session 13 (Major Refactoring - Core Engine & Architecture v0.91)
+
+**Status:** Phase 4 (Refactoring) Complete. Application Version 0.91 Stable.
+**Focus:** Implementing the Hybrid Financial Engine, Cash Flow Waterfall, and Global Profile Registry.
+
+### **Accomplishments**
+- **Financial Engine Overhaul (`financial_engine.js`):**
+  - Implemented **Hybrid Timebase**: 60 months (Year 1-5) + 30 Annual steps (Year 6-35).
+  - Built strict **Deficit Waterfall**: Cash -> Joint -> Inherited IRA -> 401k -> Reverse Mortgage.
+  - Added **Work-Status Taxation**: Tax rates now dynamically adjust based on FTE status (Working vs. Retired).
+- **Data Architecture (`hgv_data.json` & `DataContext`):**
+  - Migrated to **Global Profile Registry**: Profiles are now root-level objects, referenced by Scenarios via `profileSequence`.
+  - **Assumptions Schema**: Moved global parameters from `data.globals` to `data.assumptions` (including new `rates` and `property` blocks).
+  - **Persistence Fixes:** Added "Reset to Defaults" sidebar action and version-controlled storage keys to manage development data updates.
+- **Property Engine Parameterization:**
+  - Moved hardcoded appreciation rates (Baseline, New/Mid/Mature Add-ons) to **Assumptions** inputs.
+  - Updated `asset_math.js` to read these dynamic values.
+- **UI Updates:**
+  - **Dashboard:** Updated charts to handle hybrid data (downsampling monthly data for consistency).
+  - **Assumptions:** Added "Real Estate Growth Model" and "Reverse Mortgage Rate" controls.
+  - **Property Planners:** Removed hardcoded dates; planners now default to the Scenario Start Date.
+
+### **Next Steps**
+- **User Story 7 (Housing Transitions):** Implement the specific logic for selling the current home and buying a new one (bridging the gap between "Current Property" and "New Construction").
+- **Analysis Views:** Build the "Scenario Comparison" view to side-by-side compare "Retire Early" vs "Retire Late".
+
+## 2025-11-30: Session 12 (Version 0.91 upgrade user story 7 and associated requirements)
+
+**Status:** The requirements, architecture and user story documents are now complete, but the code basis needs a major refactoring
+**Focus:** Continued work on the requirements and user stories, upgrading story 7 with details about how a user might plan a move
+
 ## 2025-11-29: Session 11 (Version 0.9 requirements and architecture overhaul)
 
 **Status:** Performed a deep analysis and update of the application requirements, generated user stories for better implementation and testing, and updates the architecture. 

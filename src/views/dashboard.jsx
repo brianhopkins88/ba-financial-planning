@@ -1,21 +1,43 @@
-{
-type: "file",
-fileName: "src/views/dashboard.jsx",
-fullContent: `import React, { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
-import { TrendingUp, AlertTriangle, DollarSign, Activity, ArrowRight } from 'lucide-react';
+import { TrendingUp, AlertTriangle, DollarSign, Activity } from 'lucide-react';
+
+// --- CUSTOM TOOLTIP ---
+const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        return (
+            <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-xl text-xs">
+                <div className="font-bold text-slate-700 mb-2 border-b border-slate-100 pb-1">
+                    Year: {data.year}
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-slate-500">
+                    <div>Brian Age: <span className="font-bold text-slate-700">{data.age}</span></div>
+                    <div>Andrea Age: <span className="font-bold text-slate-700">{data.andreaAge}</span></div>
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                    <span className="text-slate-500">Net Worth:</span>
+                    <span className="font-mono font-bold text-emerald-600 text-sm">
+                        ${Math.round(data.netWorth).toLocaleString()}
+                    </span>
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
 
 // --- SUB-COMPONENTS ---
 const MetricCard = ({ label, value, sublabel, icon: Icon, color = "blue" }) => (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
         <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</div>
-            <div className={\`text-2xl font-bold text-\${color}-600\`}>{value}</div>
+            <div className={`text-2xl font-bold text-${color}-600`}>{value}</div>
             {sublabel && <div className="text-xs text-slate-400 mt-1">{sublabel}</div>}
         </div>
-        <div className={\`p-3 rounded-full bg-\${color}-50 text-\${color}-500\`}>
+        <div className={`p-3 rounded-full bg-${color}-50 text-${color}-500`}>
             <Icon size={24} />
         </div>
     </div>
@@ -54,23 +76,26 @@ export default function Dashboard() {
 
     // --- 1. RUN SIMULATION ---
     const simulation = useMemo(() => {
-        // We pass the active scenario and the full profile registry
         return runFinancialSimulation(activeScenario, store.profiles);
     }, [activeScenario, store.profiles]);
 
     const { timeline, events } = simulation;
 
-    // --- 2. CALCULATE METRICS ---
+    // --- 2. PREPARE CHART DATA ---
+    const chartData = useMemo(() => {
+        if (!timeline || timeline.length === 0) return [];
+        return timeline.filter(t => t.month === 12 || t === timeline[timeline.length - 1]);
+    }, [timeline]);
+
+    // --- 3. CALCULATE METRICS ---
     const lastPoint = timeline[timeline.length - 1] || {};
     const firstPoint = timeline[0] || {};
 
-    // Net Worth Delta
     const startNW = firstPoint.netWorth || 0;
     const endNW = lastPoint.netWorth || 0;
     const nwGrowth = endNW - startNW;
 
-    // Solvency Check
-    const isSolvent = !events.some(e => e.text.includes("Depleted") && e.text.includes("Reverse Mortgage")); // Rough check
+    const isSolvent = !events.some(e => e.text.includes("Depleted") && e.text.includes("Reverse Mortgage"));
 
     return (
         <div className="p-8 space-y-8 max-w-7xl mx-auto">
@@ -79,21 +104,21 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <MetricCard
                     label="Proj. Net Worth (35yr)"
-                    value={\`\$\${(endNW / 1000000).toFixed(2)}M\`}
-                    sublabel={\`Growth: +\$\${(nwGrowth / 1000000).toFixed(2)}M\`}
+                    value={`$${(endNW / 1000000).toFixed(2)}M`}
+                    sublabel={`Growth: +$${(nwGrowth / 1000000).toFixed(2)}M`}
                     icon={TrendingUp}
                     color="emerald"
                 />
                 <MetricCard
                     label="Ending Liquidity"
-                    value={\`\$\${Math.round((lastPoint.balances?.liquid || 0)/1000)}k\`}
+                    value={`$${Math.round((lastPoint.balances?.liquid || 0)/1000)}k`}
                     sublabel="Cash + Joint Accounts"
                     icon={DollarSign}
                     color="blue"
                 />
                 <MetricCard
                     label="R-HELOC Balance"
-                    value={\`\$\${Math.round((lastPoint.balances?.reverseMortgage || 0)/1000)}k\`}
+                    value={`$${Math.round((lastPoint.balances?.reverseMortgage || 0)/1000)}k`}
                     sublabel={lastPoint.balances?.reverseMortgage > 0 ? "Active in Final Year" : "Not Utilized"}
                     icon={AlertTriangle}
                     color={lastPoint.balances?.reverseMortgage > 0 ? "orange" : "slate"}
@@ -115,7 +140,7 @@ export default function Dashboard() {
                     <h3 className="font-bold text-slate-700 mb-6">Net Worth Projection</h3>
                     <div className="flex-1 min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={timeline}>
+                            <AreaChart data={chartData}>
                                 <defs>
                                     <linearGradient id="colorNw" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
@@ -124,12 +149,9 @@ export default function Dashboard() {
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                 <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(v) => \`\$\${v/1000000}M\`} />
-                                <Tooltip
-                                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                                    formatter={(val) => [\`\$\${Math.round(val).toLocaleString()}\`, 'Net Worth']}
-                                    labelFormatter={(label) => \`Year: \${label}\`}
-                                />
+                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(v) => `$${v/1000000}M`} />
+                                {/* UPDATED TOOLTIP */}
+                                <Tooltip content={<CustomTooltip />} />
                                 <Area type="monotone" dataKey="netWorth" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNw)" />
                             </AreaChart>
                         </ResponsiveContainer>
@@ -145,18 +167,18 @@ export default function Dashboard() {
                 <h3 className="font-bold text-slate-700 mb-6">Annual Net Cash Flow (Income - Expenses)</h3>
                 <div className="flex-1 min-h-0">
                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={timeline.filter((_, i) => i % 12 === 0)}> {/* Downsample to yearly for bar chart */}
+                        <BarChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(v) => \`\$\${v/1000}k\`} />
+                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(v) => `$${v/1000}k`} />
                             <Tooltip
                                 cursor={{fill: 'transparent'}}
                                 contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                                formatter={(val) => [\`\$\${Math.round(val).toLocaleString()}\`, 'Annual Surplus/Deficit']}
+                                formatter={(val) => [`$${Math.round(val).toLocaleString()}`, 'Annual Surplus/Deficit']}
                             />
                             <ReferenceLine y={0} stroke="#94a3b8" />
                             <Bar dataKey="netCashFlow" radius={[4, 4, 0, 0]}>
-                                {timeline.filter((_, i) => i % 12 === 0).map((entry, index) => (
+                                {chartData.map((entry, index) => (
                                     <Cell key={index} fill={entry.netCashFlow >= 0 ? '#3b82f6' : '#ef4444'} />
                                 ))}
                             </Bar>
@@ -166,5 +188,4 @@ export default function Dashboard() {
             </div>
         </div>
     );
-}`
 }

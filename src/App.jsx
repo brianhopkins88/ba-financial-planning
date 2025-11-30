@@ -9,17 +9,29 @@ import Assumptions from './views/assumptions';
 import Loans from './views/loans';
 import Expenses from './views/expenses';
 import Income from './views/income';
-import Assets from './views/assets'; // New Import
+import Assets from './views/assets';
 
-const Dashboard = () => <div className="p-10 text-slate-400">Dashboard Module Coming Soon (Phase 4)</div>;
+const Dashboard = () => {
+    // Lazy load the Dashboard to avoid circular dependency issues during init
+    const DashboardComponent = React.lazy(() => import('./views/dashboard'));
+    return (
+        <React.Suspense fallback={<div className="p-10 text-slate-400">Loading Dashboard...</div>}>
+            <DashboardComponent />
+        </React.Suspense>
+    );
+};
 
-// ... (TopBar component remains identical, just collapsing for brevity) ...
 const TopBar = () => {
   const { activeScenario, simulationDate, actions } = useData();
-  const timing = activeScenario.data.globals.timing || { startYear: 2025, startMonth: 1 };
+
+  // FIXED: Updated path from globals -> assumptions
+  const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
+  const timing = assumptions.timing || { startYear: 2026, startMonth: 1 };
+
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; startTimeRef.current = null; };
+
   const handleHold = (direction) => {
     const modifier = direction === 'next' ? 1 : -1;
     actions.setSimulationMonth(d => addMonths(d, modifier));
@@ -72,10 +84,10 @@ const TopBar = () => {
 };
 
 const AppShell = () => {
-  const [currentView, setCurrentView] = useState('assets'); // Default to Assets for Testing
+  const [currentView, setCurrentView] = useState('assets');
   const { isLoaded } = useData();
 
-  if (!isLoaded) return <div className="flex h-screen items-center justify-center text-slate-400 animate-pulse">Loading Financial Core v8.8...</div>;
+  if (!isLoaded) return <div className="flex h-screen items-center justify-center text-slate-400 animate-pulse">Loading Financial Core v0.91...</div>;
 
   const renderView = () => {
     switch(currentView) {
@@ -83,7 +95,7 @@ const AppShell = () => {
       case 'income': return <Income />;
       case 'expenses': return <Expenses />;
       case 'loans': return <Loans />;
-      case 'assets': return <Assets />; // New Route
+      case 'assets': return <Assets />;
       case 'assumptions': return <Assumptions />;
       default: return <Dashboard />;
     }
