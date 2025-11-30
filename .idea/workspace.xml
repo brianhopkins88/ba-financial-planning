@@ -4,15 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Commit of interim refactoring of the specification document to v0.9x">
+    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Committing v0.9 of the architecture">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/hgv_data.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/hgv_data.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/financial_engine.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/financial_engine.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/assets.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/assets.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/expenses.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/expenses.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/loans.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/loans.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -186,7 +180,31 @@
       <option name="project" value="LOCAL" />
       <updated>1764530965507</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="Commit of interim refactoring of the specification document to v0.9x">
+      <option name="closed" value="true" />
+      <created>1764544470578</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1764544470578</updated>
+    </task>
+    <task id="LOCAL-00016" summary="Committing v1.0 of the app">
+      <option name="closed" value="true" />
+      <created>1764544504493</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1764544504493</updated>
+    </task>
+    <task id="LOCAL-00017" summary="Committing v0.9 of the architecture">
+      <option name="closed" value="true" />
+      <created>1764544939272</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1764544939272</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -207,6 +225,8 @@
     <MESSAGE value="Commit of upgrade to v8.6 architecture and requirements" />
     <MESSAGE value="Commit of interim refactoring as we move to v0.9" />
     <MESSAGE value="Commit of interim refactoring of the specification document to v0.9x" />
-    <option name="LAST_COMMIT_MESSAGE" value="Commit of interim refactoring of the specification document to v0.9x" />
+    <MESSAGE value="Committing v1.0 of the app" />
+    <MESSAGE value="Committing v0.9 of the architecture" />
+    <option name="LAST_COMMIT_MESSAGE" value="Committing v0.9 of the architecture" />
   </component>
 </project>
