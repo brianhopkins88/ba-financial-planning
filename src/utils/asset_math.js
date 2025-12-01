@@ -2,10 +2,19 @@ import { addYears, getYear, parseISO, differenceInYears, isAfter, format, isVali
 import { calculateFixedLoan, calculateRevolvingLoan } from './loan_math';
 
 /**
+ * HELPER: Safe Number Extraction
+ * Handles strings ("0.02"), numbers (0.02), and missing values (undefined/null).
+ */
+const safeNum = (val, def) => {
+    if (val === undefined || val === null || val === '') return def;
+    const num = parseFloat(val);
+    return isNaN(num) ? def : num;
+};
+
+/**
  * ASSET PROJECTION ENGINE
  * Handles specific growth logic for different asset classes.
  */
-
 export const calculateAssetGrowth = (asset, assumptions, allLoans = {}, horizonYears = 35) => {
     if (!asset || !asset.type) return [];
 
@@ -22,24 +31,20 @@ export const calculateAssetGrowth = (asset, assumptions, allLoans = {}, horizonY
 /**
  * INHERITED IRA PROJECTION
  * Models the 10-year depletion rule with scheduled withdrawals based on specific calendar years.
- * Now defaults empty years to 20% (0.20) to ensure the table populates with active withdrawals.
  */
 export const projectInheritedIra = (asset, assumptions, horizonYears) => {
-    const simStartYear = assumptions.timing?.startYear || new Date().getFullYear();
-    const rate = assumptions.market?.initial || 0.07;
+    const simStartYear = safeNum(assumptions.timing?.startYear, new Date().getFullYear());
+    const rate = safeNum(assumptions.market?.initial, 0.07);
 
     // 1. Determine Key Dates
-    // Start Date: When original owner died (starts the 10-year clock)
     const startDateStr = asset.inputs?.startDate;
     const startDate = startDateStr ? parseISO(startDateStr) : new Date(simStartYear, 0, 1);
     const startYearIra = isValid(startDate) ? getYear(startDate) : simStartYear;
-
-    // 10-Year Rule: Must be empty by Dec 31 of the 10th year following death
     const finalYear = startYearIra + 10;
 
     const schedule = asset.inputs?.withdrawalSchedule || {};
 
-    let currentBalance = asset.balance || 0;
+    let currentBalance = safeNum(asset.balance, 0);
     const projection = [];
     let cumulativeWithdrawals = 0;
 
@@ -59,8 +64,7 @@ export const projectInheritedIra = (asset, assumptions, horizonYears) => {
             if (currentYear === finalYear) {
                 withdrawalPct = 1.0; // Force empty
             } else {
-                // Look for explicit year key, default to 0.20 (20%)
-                withdrawalPct = schedule[currentYear] !== undefined ? schedule[currentYear] : 0.20;
+                withdrawalPct = schedule[currentYear] !== undefined ? safeNum(schedule[currentYear], 0.20) : 0.20;
             }
 
             withdrawalAmount = janBalance * withdrawalPct;
@@ -106,23 +110,26 @@ export const projectInheritedIra = (asset, assumptions, horizonYears) => {
  * ALSO: Calculates Linked Loan Balances for "Net Equity" view.
  */
 export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => {
-    const startYear = assumptions.timing?.startYear || new Date().getFullYear();
-    const props = assumptions.property || {};
+    const startYear = safeNum(assumptions.timing?.startYear, new Date().getFullYear());
 
-    const baseline = props.baselineGrowth !== undefined ? props.baselineGrowth : 0.02;
-    const newYears = props.newHomeYears || 5;
-    const midYears = props.midHomeYears || 15;
+    // Defensive access to assumptions.property
+    const props = (assumptions && assumptions.property) ? assumptions.property : {};
 
-    const newAddon = props.newHomeAddon !== undefined ? props.newHomeAddon : 0.015;
-    const midAddon = props.midHomeAddon !== undefined ? props.midHomeAddon : 0.007;
-    const matureAddon = props.matureHomeAddon !== undefined ? props.matureHomeAddon : 0.0;
+    // Robust defaults using safeNum
+    const baseline = safeNum(props.baselineGrowth, 0.02);
+    const newYears = safeNum(props.newHomeYears, 5);
+    const midYears = safeNum(props.midHomeYears, 15);
 
-    const maxGrowth = props.maxGrowth !== undefined ? props.maxGrowth : 0.04;
+    const newAddon = safeNum(props.newHomeAddon, 0.015);
+    const midAddon = safeNum(props.midHomeAddon, 0.007);
+    const matureAddon = safeNum(props.matureHomeAddon, 0.0);
+
+    const maxGrowth = safeNum(props.maxGrowth, 0.04);
     const minGrowth = 0.0;
 
-    const currentValue = asset.balance || 0;
-    const buildYear = asset.inputs?.buildYear || (startYear - 10);
-    const locationFactor = asset.inputs?.locationFactor || 0.0;
+    const currentValue = safeNum(asset.balance, 0);
+    const buildYear = safeNum(asset.inputs?.buildYear, startYear - 10);
+    const locationFactor = safeNum(asset.inputs?.locationFactor, 0.0);
 
     // Identify Linked Loans
     const linkedIds = asset.inputs?.linkedLoanIds || (asset.inputs?.linkedLoanId ? [asset.inputs.linkedLoanId] : []);
@@ -165,6 +172,8 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
         }
 
         growthRate += locationFactor;
+
+        // Clamp growth rate
         if (growthRate < minGrowth) growthRate = minGrowth;
         if (growthRate > maxGrowth) growthRate = maxGrowth;
 
@@ -189,6 +198,7 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
             bucket
         });
 
+        // Apply Growth for NEXT year
         currentVal = currentVal * (1 + growthRate);
     }
 
@@ -200,10 +210,10 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
  * Used for Investment Accounts for visualization purposes.
  */
 export const projectSimpleGrowth = (asset, assumptions, horizonYears) => {
-    const startYear = assumptions.timing?.startYear || new Date().getFullYear();
-    const rate = asset.growthType === 'fixed' ? (asset.fixedRate || 0) : (assumptions.market?.initial || 0.07);
+    const startYear = safeNum(assumptions.timing?.startYear, new Date().getFullYear());
+    const rate = asset.growthType === 'fixed' ? safeNum(asset.fixedRate, 0) : safeNum(assumptions.market?.initial, 0.07);
 
-    let balance = asset.balance || 0;
+    let balance = safeNum(asset.balance, 0);
     const projection = [];
 
     for (let t = 0; t <= horizonYears; t++) {

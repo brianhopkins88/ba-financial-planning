@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { generateAIExport } from '../utils/ai_export_utils';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil } from 'lucide-react';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
@@ -19,9 +19,16 @@ export default function Sidebar({ currentView, setView }) {
     setIsMenuOpen(false);
   };
 
+  const handleSaveAs = () => {
+      const n = prompt("Save Current Scenario As (New Name):", `${activeScenario.name} (Copy)`);
+      if(n) actions.createScenario(n);
+      setIsMenuOpen(false);
+  };
+
   const handleMenuItemClick = (action) => {
       setIsMenuOpen(false);
       if(action === 'save') { actions.saveAll(); alert("Session saved locally."); }
+      if(action === 'save_as') handleSaveAs();
       if(action === 'export') handleExportFull();
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
       if(action === 'upload') { fileInputRef.current.click(); }
@@ -38,12 +45,23 @@ export default function Sidebar({ currentView, setView }) {
       reader.onload = (ev) => {
           try {
               const json = JSON.parse(ev.target.result);
-              const choice = prompt("Importing file.\nType 'merge' to add to session.\nType 'overwrite' to replace session.", "merge");
-              if (choice && (choice.toLowerCase() === 'merge' || choice.toLowerCase() === 'overwrite')) {
-                  actions.importSession(json, choice.toLowerCase());
-                  alert(`Import successful.`);
+
+              const choice = prompt(
+                  "Import Options:\n" +
+                  "1. Type 'new' to create a NEW Scenario (Recommended)\n" +
+                  "2. Type 'overwrite' to replace the CURRENT Active Scenario",
+                  "new"
+              );
+
+              if (choice) {
+                  const mode = choice.toLowerCase().includes('over') ? 'overwrite_active' : 'new';
+                  actions.importData(json, mode);
+                  alert(`Import Successful (${mode === 'new' ? 'Created New Scenario' : 'Overwrote Active Scenario'})`);
               }
-          } catch(e) { alert("Error parsing JSON."); }
+          } catch(e) {
+              console.error(e);
+              alert("Error parsing JSON.");
+          }
           e.target.value = null;
       };
       reader.readAsText(file);
@@ -51,12 +69,6 @@ export default function Sidebar({ currentView, setView }) {
 
   const handleScenarioClick = (id) => { actions.switchScenario(id); setIsScenarioListOpen(false); };
   const handleNewScenario = () => { const n = prompt("Name:"); if(n) { actions.createScenario(n); setIsScenarioListOpen(false); } };
-
-  // NEW ACTIONS
-  const handleSaveAs = () => {
-      const n = prompt("Save Current Scenario As (New Name):", `${activeScenario.name} (Copy)`);
-      if(n) actions.createScenario(n); // Uses current data
-  };
 
   const handleRenameActive = () => {
       const n = prompt("Rename Scenario:", activeScenario.name);
@@ -92,6 +104,7 @@ export default function Sidebar({ currentView, setView }) {
                 <div className="fixed inset-0 z-30" onClick={() => setIsMenuOpen(false)}></div>
                 <div className="absolute right-4 top-14 w-64 bg-white rounded-lg shadow-xl z-50 py-2 border border-slate-200 text-slate-700">
                     <button onClick={() => handleMenuItemClick('save')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Save size={14} className="text-blue-600"/> Save Session</button>
+                    <button onClick={() => handleMenuItemClick('save_as')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Copy size={14} className="text-blue-400"/> Save Scenario As...</button>
                     <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export AI Data</button>
                     <button onClick={() => handleMenuItemClick('upload')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Import / Restore</button>
                     <div className="h-px bg-slate-100 my-1"></div>
@@ -138,7 +151,7 @@ export default function Sidebar({ currentView, setView }) {
       <nav className="flex-1 p-4 space-y-1">
         <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">Modules</div>
         <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />
-        <NavItem id="expenses" label="Cash Flow" icon={Wallet} />
+        <NavItem id="cashflow" label="Cash Flow" icon={Wallet} />
         <NavItem id="loans" label="Liabilities" icon={Landmark} />
         <NavItem id="assets" label="Assets & Property" icon={Receipt} />
         <NavItem id="assumptions" label="Assumptions" icon={Settings} />

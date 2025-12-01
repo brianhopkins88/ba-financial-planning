@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "0.99.1",
+    "version": "0.99.3",
     "activeScenarioId": "scen_default"
   },
   "scenarios": {
@@ -11,7 +11,7 @@
       "lastUpdated": "2025-11-30T16:00:00Z",
       "data": {
         "assumptions": {
-          "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025 },
+          "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025, "propertyInsurance": 0.05 },
           "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
           "rates": { "reverseMortgage": 0.065 },
           "property": {
@@ -41,7 +41,7 @@
               "bonus": { "amount": 0, "month": 12 },
               "birthYear": 1965,
               "birthMonth": 2,
-              "socialSecurity": { "startAge": 670, "monthlyAmount": 3300 },
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3300 },
                 "pension": { "monthlyAmount": 2541, "inflationAdjusted": true }
           },
           "workStatus": {
@@ -56,7 +56,9 @@
             "2034": { "brian": 0.0, "andrea": 0.0 },
             "2035": { "brian": 0.0, "andrea": 0.0 }
           },
-          "profileSequence": []
+          "profileSequence": [
+             { "profileId": "prof_hgv_income_base", "startDate": "2026-01-01", "isActive": true }
+          ]
         },
         "expenses": {
           "bills": [
@@ -162,6 +164,36 @@
              { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
         ]
       }
+    },
+    "prof_hgv_income_base": {
+        "id": "prof_hgv_income_base", "name": "HGV Base Income", "type": "income",
+        "data": {
+            "brian": {
+                "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10,
+                "bonus": { "amount": 20000, "month": 3 },
+                "birthYear": 1966, "birthMonth": 1,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3963 }
+            },
+            "andrea": {
+                "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10,
+                "bonus": { "amount": 0, "month": 12 },
+                "birthYear": 1965, "birthMonth": 2,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3300 },
+                "pension": { "monthlyAmount": 2541, "inflationAdjusted": true }
+            },
+            "workStatus": {
+                "2026": { "brian": 1.0, "andrea": 1.0 },
+                "2027": { "brian": 1.0, "andrea": 0.6 },
+                "2028": { "brian": 1.0, "andrea": 0.6 },
+                "2029": { "brian": 0.5, "andrea": 0.0 },
+                "2030": { "brian": 0.0, "andrea": 0.0 },
+                "2031": { "brian": 0.0, "andrea": 0.0 },
+                "2032": { "brian": 0.0, "andrea": 0.0 },
+                "2033": { "brian": 0.0, "andrea": 0.0 },
+                "2034": { "brian": 0.0, "andrea": 0.0 },
+                "2035": { "brian": 0.0, "andrea": 0.0 }
+            }
+        }
     }
   }
 }
