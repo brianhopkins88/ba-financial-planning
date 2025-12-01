@@ -1,48 +1,32 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, FilePlus, Download, RotateCcw, ChevronDown, Copy, Trash2, Pencil, TrendingUp, PiggyBank, RefreshCw, Wallet, Database } from 'lucide-react';
+import { generateAIExport } from '../utils/ai_export_utils';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScenarioListOpen, setIsScenarioListOpen] = useState(false);
   const fileInputRef = useRef(null);
-  const [uploadMode, setUploadMode] = useState(null);
 
-  // Standard Export: Active Scenario + Linked Profiles
-  const handleExportScenario = () => {
-    const usedProfileIds = new Set();
-    activeScenario.data.income?.profileSequence?.forEach(p => usedProfileIds.add(p.profileId));
-    activeScenario.data.expenses?.profileSequence?.forEach(p => usedProfileIds.add(p.profileId));
-    const linkedProfiles = {};
-    usedProfileIds.forEach(id => { if(store.profiles[id]) linkedProfiles[id] = store.profiles[id]; });
-    const exportObject = { ...activeScenario, linkedProfiles };
-    const blob = new Blob([JSON.stringify(exportObject, null, 2)], { type: "application/json" });
+  const handleExportFull = () => {
+    const jsonString = generateAIExport(store);
+    const blob = new Blob([jsonString], { type: "application/json" });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${activeScenario.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link); setIsMenuOpen(false);
-  };
-
-  // Dev Export: Full Store (Matches hgv_data.json structure)
-  const handleExportSource = () => {
-    const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `hgv_data_source_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link); setIsMenuOpen(false);
+    link.download = `ba_planner_full_export_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    setIsMenuOpen(false);
   };
 
   const handleMenuItemClick = (action) => {
       setIsMenuOpen(false);
-      if(action === 'save') { actions.saveAll(); alert("Scenario saved."); }
-      if(action === 'export') handleExportScenario();
-      if(action === 'export_source') handleExportSource();
+      if(action === 'save') { actions.saveAll(); alert("Session saved locally."); }
+      if(action === 'export') handleExportFull();
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
-      if(action === 'upload_current') { setUploadMode('current'); fileInputRef.current.click(); }
-      if(action === 'upload_new') { setUploadMode('new'); fileInputRef.current.click(); }
+      if(action === 'upload') { fileInputRef.current.click(); }
       if(action === 'clear') {
-          if(confirm("Are you sure you want to reset the current scenario to defaults? This will overwrite your changes.")) {
+          if(confirm("Are you sure you want to reset to the default Example Scenario? This will wipe your local changes.")) {
               actions.resetActiveScenario();
           }
       }
@@ -54,9 +38,12 @@ export default function Sidebar({ currentView, setView }) {
       reader.onload = (ev) => {
           try {
               const json = JSON.parse(ev.target.result);
-              if(uploadMode === 'current' && confirm("Overwrite?")) actions.importToActive(json);
-              if(uploadMode === 'new') { const n = prompt("Name:", json.name); if(n) actions.importAsNew(n, json); }
-          } catch(e) { alert("Error parsing JSON"); }
+              const choice = prompt("Importing file.\nType 'merge' to add to session.\nType 'overwrite' to replace session.", "merge");
+              if (choice && (choice.toLowerCase() === 'merge' || choice.toLowerCase() === 'overwrite')) {
+                  actions.importSession(json, choice.toLowerCase());
+                  alert(`Import successful.`);
+              }
+          } catch(e) { alert("Error parsing JSON."); }
           e.target.value = null;
       };
       reader.readAsText(file);
@@ -64,6 +51,21 @@ export default function Sidebar({ currentView, setView }) {
 
   const handleScenarioClick = (id) => { actions.switchScenario(id); setIsScenarioListOpen(false); };
   const handleNewScenario = () => { const n = prompt("Name:"); if(n) { actions.createScenario(n); setIsScenarioListOpen(false); } };
+
+  // NEW ACTIONS
+  const handleSaveAs = () => {
+      const n = prompt("Save Current Scenario As (New Name):", `${activeScenario.name} (Copy)`);
+      if(n) actions.createScenario(n); // Uses current data
+  };
+
+  const handleRenameActive = () => {
+      const n = prompt("Rename Scenario:", activeScenario.name);
+      if(n) actions.renameScenario(activeScenario.id, n);
+  };
+
+  const handleDeleteActive = () => {
+      if(confirm(`Delete "${activeScenario.name}"?`)) actions.deleteScenario(activeScenario.id);
+  };
 
   const NavItem = ({ id, label, icon: Icon }) => (
     <button
@@ -83,21 +85,18 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v0.97</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v1.1</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
                 <div className="fixed inset-0 z-30" onClick={() => setIsMenuOpen(false)}></div>
                 <div className="absolute right-4 top-14 w-64 bg-white rounded-lg shadow-xl z-50 py-2 border border-slate-200 text-slate-700">
-                    <button onClick={() => handleMenuItemClick('save')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Save size={14} className="text-blue-600"/> Save Changes</button>
-                    <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export Scenario</button>
-                    <button onClick={() => handleMenuItemClick('export_source')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Database size={14} className="text-slate-600"/> Export Full Source</button>
+                    <button onClick={() => handleMenuItemClick('save')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Save size={14} className="text-blue-600"/> Save Session</button>
+                    <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export AI Data</button>
+                    <button onClick={() => handleMenuItemClick('upload')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Import / Restore</button>
                     <div className="h-px bg-slate-100 my-1"></div>
-                    <button onClick={() => handleMenuItemClick('upload_current')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Upload to Current</button>
-                    <button onClick={() => handleMenuItemClick('upload_new')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><FilePlus size={14} className="text-purple-600"/> Upload as New</button>
-                    <div className="h-px bg-slate-100 my-1"></div>
-                    <button onClick={() => handleMenuItemClick('create_blank')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Plus size={14} className="text-slate-600"/> Create Blank</button>
-                    <button onClick={() => handleMenuItemClick('clear')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm text-red-600 hover:bg-red-50"><RefreshCw size={14}/> Reset to Defaults</button>
+                    <button onClick={() => handleMenuItemClick('create_blank')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Plus size={14} className="text-slate-600"/> Create Blank Scenario</button>
+                    <button onClick={() => handleMenuItemClick('clear')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm text-red-600 hover:bg-red-50"><RotateCcw size={14}/> Reset to Defaults</button>
                 </div>
             </>
         )}
@@ -105,7 +104,15 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* SCENARIO SELECTOR */}
       <div className="p-4 border-b border-slate-800 space-y-3 relative z-10">
-        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Scenario</div>
+        <div className="flex justify-between items-center">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Scenario</div>
+            <div className="flex gap-1">
+                <button onClick={handleSaveAs} title="Save As / Duplicate" className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded"><Copy size={12}/></button>
+                <button onClick={handleRenameActive} title="Rename" className="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded"><Pencil size={12}/></button>
+                <button onClick={handleDeleteActive} title="Delete" className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded"><Trash2 size={12}/></button>
+            </div>
+        </div>
+
         <div className="relative">
             <button onClick={() => setIsScenarioListOpen(!isScenarioListOpen)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white flex justify-between items-center hover:bg-slate-700">
                 <span className="truncate">{activeScenario.name}</span><ChevronDown size={14} className="text-slate-400"/>
@@ -133,12 +140,13 @@ export default function Sidebar({ currentView, setView }) {
         <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />
         <NavItem id="expenses" label="Cash Flow" icon={Wallet} />
         <NavItem id="loans" label="Liabilities" icon={Landmark} />
-        <NavItem id="assets" label="Assets & Property" icon={PiggyBank} />
+        <NavItem id="assets" label="Assets & Property" icon={Receipt} />
         <NavItem id="assumptions" label="Assumptions" icon={Settings} />
       </nav>
 
       <div className="p-4 border-t border-slate-800 text-xs text-slate-600">
-        Last Updated:<br/><span className="text-slate-500 font-mono">{new Date(activeScenario.lastUpdated).toLocaleDateString()}</span>
+        <span className="block mb-1">Last Saved: {new Date().toLocaleTimeString()}</span>
+        <span className="text-slate-500 font-mono text-[10px]">Session Active</span>
       </div>
     </div>
   );

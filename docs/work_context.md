@@ -1,5 +1,42 @@
 # This file contains notes about the work that has happened so far
 
+## 2025-11-30: Session 16 (Scenario Analysis & AI Export Architecture)
+
+Status: Phase 5 (Refinement) - Major Logic & Architecture Updates.
+
+Focus: Implementing robust Scenario Management, AI-Ready Data Export, and complex "Lifecycle Phase" logic in the Financial Engine.
+
+### **Accomplishments**
+
+- **Data Architecture & AI Export:**
+  - **Renaming:** Migrated data file from `hgv_data.json` to `application_data.json`.
+  - **AI Export Utility:** Created `src/utils/ai_export_utils.js`.
+    - Generates a single JSON file containing **all** saved scenarios.
+    - Runs a full simulation for every scenario before export to include projected `timeline` and `events`.
+    - Injects a `__system_documentation` block describing the engine's rules (Inflation, Taxes, Waterfall, etc.) so an external AI can interpret the data without code access.
+  - **Import Logic:** Added `importSession` action with **Merge** (add scenarios) vs. **Overwrite** (replace session) modes. Import automatically strips the heavy AI metadata to keep the app lightweight.
+- **Scenario Management (Sidebar & Context):**
+  - **Save As (Clone):** implemented `handleSaveAs` to duplicate the current scenario state into a new slot.
+  - **Rename & Delete:** Added inline controls to Rename and Delete scenarios.
+  - **Safety Logic:** Prevented deletion of the last scenario; logic now warns the user and resets to a default "Example Scenario" instead of leaving the app in a broken state.
+- **Financial Engine Overhaul - "Lifecycle Phases":**
+  - Refactored `runFinancialSimulation` to handle three distinct phases of retirement:
+    1. **Standard Waterfall:** Deficits drawn from Cash -> Joint -> IRA -> 401k (down to Safety Floor).
+    2. **Reverse Mortgage (Active-RM):** Triggered when 401k hits floor.
+       - **Bug Fix:** Activating RM now automatically pays off any existing "Mortgage" type loans and adds them to the RM balance.
+    3. **Post-Housing (Forced Sale):** Triggered when RM Balance hits the age-based **LTV Limit** (e.g., 50-60%).
+       - **Action:** Forces sale of property.
+       - **Proceeds:** Net equity (after paying RM) tops off Cash first, then overflows to Joint.
+       - **Waterfall Change:** In this phase, the **401k Safety Floor is removed**, allowing full depletion of retirement assets to fund end-of-life expenses.
+- **Inherited IRA Refinement:**
+  - **Calendar-Year Logic:** Withdrawal schedule is now keyed by specific years (e.g., "2026", "2027") rather than generic indices.
+  - **10-Year Rule:** The UI calculates the mandatory depletion deadline (10 years after "Original Owner Death") and dynamically generates input boxes only for the remaining years.
+  - **Auto-Fill:** New inputs default to **20%** (instead of 0%) to ensure users see projected withdrawals immediately.
+  - **Compliance:** The final year (Year 10) is hard-locked to 100% withdrawal.
+- **UI Updates:**
+  - **Assets View:** Added "Current Balance Date" and "Inheritance Start Date" fields to correctly calculate the 10-year window relative to the Scenario Start Date.
+  - **Sidebar:** Added the new Export/Import/Save-As controls.
+
 ## 2025-11-30: Session 15 (Assets Visualization & Component Engine)
 
 **Status:** Phase 5 (Refinement) In Progress. **Focus:** Overhauling Asset Charts to be analytical (Stacked/Bi-Directional) and implementing component-based flow tracking in the Financial Engine.

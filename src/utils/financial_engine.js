@@ -1,4 +1,4 @@
-import { addMonths, addYears, getYear, getMonth, format, isBefore, isAfter, parseISO, startOfMonth } from 'date-fns';
+import { addMonths, addYears, getYear, getMonth, format, isBefore, isAfter, parseISO, startOfMonth, isValid } from 'date-fns';
 import { calculateRevolvingLoan, calculateFixedLoan } from './loan_math';
 import { calculateAssetGrowth } from './asset_math';
 
@@ -110,7 +110,9 @@ export const runFinancialSimulation = (scenario, profiles) => {
         activeLoans: new Set(),
         ssLogged: { brian: false, andrea: false },
         pensionLogged: { andrea: false },
-        iraEvents: {}
+        iraEvents: {},
+        forcedSaleOccurred: false,
+        postHousingPhase: false
     };
 
     Object.values(data.loans || {}).forEach(l => { if(l.active) state.activeLoans.add(l.id); });
@@ -138,12 +140,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
         }
     };
 
+    // --- ASSET INITIALIZATION ---
     const assets = Object.values(data.assets.accounts || {});
     const futureAssets = [];
 
     assets.forEach(a => {
         if (!a.active) return;
-
         if (a.type === 'property') {
             const pStart = a.inputs?.startDate ? parseISO(a.inputs.startDate) : startDate;
             if (!isAfter(pStart, startDate)) state.properties[a.id] = { active: true, value: a.balance };
@@ -164,13 +166,13 @@ export const runFinancialSimulation = (scenario, profiles) => {
         }
     });
 
+    // INHERITED IRA SETUP (Year-based)
     const iraAccount = assets.find(a => a.type === 'inherited');
-    const iraStart = iraAccount?.inputs?.startDate ? parseISO(iraAccount.inputs.startDate) : startDate;
-    const iraStartYear = getYear(iraStart);
-    const cutoffDate = new Date(iraStartYear, 0, 15);
-    const iraFirstWithdrawalYear = isAfter(iraStart, cutoffDate) ? iraStartYear + 1 : iraStartYear;
-    const iraFinalWithdrawalYear = iraFirstWithdrawalYear + 9;
-    const iraSchedule = iraAccount?.inputs?.withdrawalSchedule || Array(10).fill(0.10);
+    const iraStartStr = iraAccount?.inputs?.startDate;
+    const iraStart = iraStartStr ? parseISO(iraStartStr) : startDate;
+    const iraStartYear = isValid(iraStart) ? getYear(iraStart) : startYear;
+    const iraFinalWithdrawalYear = iraStartYear + 10;
+    const iraSchedule = iraAccount?.inputs?.withdrawalSchedule || {};
 
     const timeline = [];
     const events = [];
@@ -179,7 +181,6 @@ export const runFinancialSimulation = (scenario, profiles) => {
     for (let i = 0; i < 60; i++) steps.push({ type: 'month', index: i });
     for (let i = 1; i <= 30; i++) steps.push({ type: 'year', index: i });
 
-    // --- INITIAL SNAPSHOT ---
     let initialDebt = 0;
     let initialPropVal = 0;
     const startMonthKey = format(startDate, 'yyyy-MM');
@@ -199,14 +200,35 @@ export const runFinancialSimulation = (scenario, profiles) => {
         age: startYear - (data.income.brian.birthYear || 1966),
         andreaAge: startYear - (data.income.andrea.birthYear || 1965),
         income: 0, expenses: 0, netCashFlow: 0,
-        balances: { ...state, property: initialPropVal, liquid: state.cash + state.joint, totalDebt: initialDebt }, // ADDED totalDebt
+        balances: { ...state, property: initialPropVal, liquid: state.cash + state.joint, totalDebt: initialDebt },
         components: JSON.parse(JSON.stringify(state.components)),
         flows: { ...state.annualFlows },
         netWorth: (state.cash + state.joint + state.inherited + state.retirement + initialPropVal) - (state.reverseMortgage + initialDebt),
         shortfall: 0
     });
 
-    // --- 3. LOOP ---
+    // --- HELPER: DISTRIBUTE SALE PROCEEDS ---
+    const distributeSaleProceeds = (netCash) => {
+        if (netCash <= 0) return;
+        const cashMax = assumptions.thresholds?.cashMax || 30000;
+        const cashNeed = Math.max(0, cashMax - state.cash);
+
+        // 1. Top off Cash
+        const toCash = Math.min(netCash, cashNeed);
+        if (toCash > 0) {
+            state.cash += toCash;
+            updateComponents('cash', toCash);
+        }
+
+        // 2. Remainder to Joint
+        const remainder = netCash - toCash;
+        if (remainder > 0) {
+            state.joint += remainder;
+            updateComponents('joint', remainder);
+        }
+    };
+
+    // --- MAIN LOOP ---
     steps.forEach(step => {
         const isMonthly = step.type === 'month';
         const currentDate = state.date;
@@ -224,7 +246,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             rmCurrentYear.interest = 0;
         }
 
-        // --- FUTURE ASSETS ---
+        // Future Assets
         futureAssets.forEach((fa, idx) => {
             if (fa.activated) return;
             let isTime = false;
@@ -242,7 +264,6 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const andreaBirthYear = data.income.andrea.birthYear || 1965;
         const brianAge = year - brianBirthYear;
         const andreaAge = year - andreaBirthYear;
-
         const inflationRate = assumptions.inflation.general || 0.025;
         const yearsElapsed = step.type === 'month' ? step.index / 12 : (5 + step.index);
         const inflationMult = Math.pow(1 + inflationRate, yearsElapsed);
@@ -250,22 +271,17 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const workStatus = data.income.workStatus?.[year] || { brian: 0, andrea: 0 };
         const taxRate = getTaxRate(year, workStatus, assumptions);
 
-        // --- 401K CONTRIBUTIONS (BRIAN MATCH ONLY) ---
+        // Income & Contributions
         const brianGross = (data.income.brian.grossForContrib || 0) * inflationMult;
         const andreaGross = (data.income.andrea.grossForContrib || 0) * inflationMult;
-
         const brianContribPct = data.income.brian.contribPercent || 0;
         const andreaContribPct = data.income.andrea.contribPercent || 0;
-
-        // Brian Match: 50% of first 6%
         const brianMatchRate = Math.min(brianContribPct, 0.06) * 0.5;
         const andreaMatchRate = 0;
-
         const brianEmployeeContrib = (brianGross * workStatus.brian * brianContribPct) * dt;
         const brianEmployerMatch = (brianGross * workStatus.brian * brianMatchRate) * dt;
         const andreaEmployeeContrib = (andreaGross * workStatus.andrea * andreaContribPct) * dt;
         const andreaEmployerMatch = (andreaGross * workStatus.andrea * andreaMatchRate) * dt;
-
         const totalContrib = brianEmployeeContrib + brianEmployerMatch + andreaEmployeeContrib + andreaEmployerMatch;
 
         if (totalContrib > 0) {
@@ -273,27 +289,30 @@ export const runFinancialSimulation = (scenario, profiles) => {
             state.retirement += totalContrib;
         }
 
-        // --- INHERITED IRA ---
+        // Inherited IRA RMDs
         if (state.inherited > 0) {
             let mandatoryWithdrawal = 0;
             const isJanuary = monthIndex === 1;
-            if (isJanuary && year >= iraFirstWithdrawalYear && year <= iraFinalWithdrawalYear) {
-                const idx = year - iraFirstWithdrawalYear;
-                let pct = iraSchedule[idx] !== undefined ? iraSchedule[idx] : 0.1;
-                if (year === iraFinalWithdrawalYear) pct = 1.0;
+            if (isJanuary && year <= iraFinalWithdrawalYear) {
+                let pct = 0;
+                if (year === iraFinalWithdrawalYear) {
+                    pct = 1.0;
+                } else {
+                    // FIXED: Default to 0.20 (20%) for empty years to ensure population
+                    pct = iraSchedule[year] !== undefined ? iraSchedule[year] : 0.20;
+                }
                 mandatoryWithdrawal = state.inherited * pct;
             }
+
             if (mandatoryWithdrawal > 0) {
                 if (mandatoryWithdrawal > state.inherited) mandatoryWithdrawal = state.inherited;
                 updateComponents('inherited', -mandatoryWithdrawal);
                 state.inherited -= mandatoryWithdrawal;
                 if(state.inherited < 1) state.inherited = 0;
-
                 const effectiveTaxRate = getIraTaxRate(mandatoryWithdrawal, taxRate);
                 const netProceeds = mandatoryWithdrawal * (1 - effectiveTaxRate);
                 updateComponents('joint', netProceeds);
                 state.joint += netProceeds;
-
                 if (year === iraFinalWithdrawalYear && !state.iraEvents.depleted) {
                     events.push({ date: dateStr, text: "Inherited IRA Final Year: Fully Withdrawn" });
                     state.iraEvents.depleted = true;
@@ -301,7 +320,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             }
         }
 
-        // --- PROPERTY LOGIC ---
+        // --- PROPERTY LOGIC (Sale & Values) ---
         let totalActivePropValue = 0;
         Object.keys(propertyTrajectories).forEach(pId => {
              if (!state.properties[pId]?.active) {
@@ -319,6 +338,8 @@ export const runFinancialSimulation = (scenario, profiles) => {
                     }
                 }
             }
+
+            // PLANNED SALE LOGIC
             if (state.properties[pId]?.active) {
                  const prop = propertyAssets.find(p=>p.id===pId);
                  const sellStr = prop.inputs?.sellDate ? prop.inputs.sellDate.slice(0, 7) : null;
@@ -336,19 +357,20 @@ export const runFinancialSimulation = (scenario, profiles) => {
                              state.activeLoans.delete(lid);
                          }
                      });
+
                      let rmPayoff = 0;
                      if (state.reverseMortgage > 0) {
                          rmPayoff = state.reverseMortgage;
                          state.reverseMortgage = 0;
                          state.rmActive = false;
                      }
+
                      const finalCash = netProceedsBeforeLoan - totalLoanPayoff - rmPayoff;
-                     if (finalCash > 0) {
-                         updateComponents('joint', finalCash);
-                         state.joint += finalCash;
-                     }
+                     distributeSaleProceeds(finalCash);
+
                      state.properties[pId].active = false;
                      state.properties[pId].value = 0;
+                     state.postHousingPhase = true;
                      events.push({ date: dateStr, text: `Sold ${prop.name}. Net Equity: $${Math.round(finalCash).toLocaleString()}` });
                  }
             }
@@ -358,8 +380,48 @@ export const runFinancialSimulation = (scenario, profiles) => {
              }
         });
 
-        const incomeProfile = getActiveProfile(data.income.profileSequence, dateStr, profiles) || data.income;
+        // --- NEW: LTV CHECK FOR FORCED SALE ---
+        if (state.rmActive && totalActivePropValue > 0) {
+            const currentLTV = state.reverseMortgage / totalActivePropValue;
+            const limit = getLtvLimit(brianAge);
 
+            if (currentLTV >= limit) {
+                const saleValue = totalActivePropValue;
+                const netProceedsBeforeLoan = saleValue * 0.94;
+
+                let totalNormalLoanPayoff = 0;
+                state.activeLoans.forEach(lid => {
+                    const sched = loanScheduleMap[lid];
+                    if (sched) {
+                         const currentInfo = isMonthly ? sched[monthKey] : sched[`${year}-12-31`];
+                         if(currentInfo) {
+                             totalNormalLoanPayoff += currentInfo.balance;
+                             state.closedLoans.add(lid);
+                             state.activeLoans.delete(lid);
+                         }
+                    }
+                });
+
+                const rmPayoff = state.reverseMortgage;
+                state.reverseMortgage = 0;
+                state.rmActive = false;
+
+                const finalCash = netProceedsBeforeLoan - totalNormalLoanPayoff - rmPayoff;
+                distributeSaleProceeds(finalCash);
+
+                Object.keys(state.properties).forEach(pid => {
+                     state.properties[pid].active = false;
+                     state.properties[pid].value = 0;
+                });
+                totalActivePropValue = 0;
+
+                state.forcedSaleOccurred = true;
+                state.postHousingPhase = true;
+                events.push({ date: dateStr, text: `FORCED SALE (LTV Limit ${Math.round(limit*100)}% Hit). Net Equity: $${Math.round(finalCash).toLocaleString()}` });
+            }
+        }
+
+        const incomeProfile = getActiveProfile(data.income.profileSequence, dateStr, profiles) || data.income;
         let periodIncome = 0;
         const brianSalary = ((incomeProfile.brian?.netSalary || 0) * inflationMult) * workStatus.brian;
         const andreaSalary = ((incomeProfile.andrea?.netSalary || 0) * inflationMult) * workStatus.andrea;
@@ -413,10 +475,8 @@ export const runFinancialSimulation = (scenario, profiles) => {
         Object.values(data.loans).forEach(loan => {
             if (!loan.active) return;
             if (state.closedLoans.has(loan.id)) return;
-
             const sched = loanScheduleMap[loan.id];
             if (!sched) return;
-
             if (isMonthly) {
                 const info = sched[monthKey];
                 if (info) {
@@ -436,14 +496,10 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 for (let m=1; m<=12; m++) {
                     const mKey = `${year}-${String(m).padStart(2,'0')}`;
                     const info = sched[mKey];
-                    if (info) {
-                        annualPayment += info.payment;
-                        lastBalance = info.balance;
-                    }
+                    if (info) { annualPayment += info.payment; lastBalance = info.balance; }
                 }
                 periodExpenses += annualPayment;
                 totalActiveLoanBalance += lastBalance;
-
                 if (lastBalance <= 0.01 && state.activeLoans.has(loan.id)) {
                      events.push({ date: `${year}-12-31`, text: `Liability Paid Off: ${loan.name}` });
                      state.activeLoans.delete(loan.id);
@@ -452,10 +508,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             }
         });
 
-        // --- EXPENSES: FUN MONEY & ONE-OFFS (SCENARIO DRIVEN) ---
         const planningExpenses = data.expenses || {};
-
-        // Fun Money
         const brackets = planningExpenses.retirementBrackets || {};
         let funMoneyBase = 0;
         Object.keys(brackets).forEach(k => {
@@ -464,7 +517,6 @@ export const runFinancialSimulation = (scenario, profiles) => {
         });
         if (funMoneyBase > 0) periodExpenses += (funMoneyBase * dt) * inflationMult;
 
-        // One-Offs
         const oneOffs = planningExpenses.oneOffs || [];
         oneOffs.forEach(item => {
             let match = false;
@@ -494,89 +546,164 @@ export const runFinancialSimulation = (scenario, profiles) => {
             let needed = Math.abs(netCashFlow);
             const cashMin = assumptions.thresholds?.cashMin || 15000;
 
-            // 1. Cash Savings (Floor: cashMin)
-            const availCash = Math.max(0, state.cash - cashMin);
-            if (availCash >= needed) {
-                updateComponents('cash', -needed);
-                state.cash -= needed;
-                needed = 0;
-            } else {
-                updateComponents('cash', -availCash);
-                state.cash -= availCash;
-                needed -= availCash;
-            }
-
-            // 2. Joint Investment (Floor: 0 / jointMin)
-            if (needed > 0) {
-                const jointMin = assumptions.thresholds?.jointMin || 0;
-                const availJoint = Math.max(0, state.joint - jointMin);
-                const effectiveRate = taxRate * 0.5;
-                const grossNeeded = needed / (1 - effectiveRate);
-
-                if (availJoint >= grossNeeded) {
-                    updateComponents('joint', -grossNeeded);
-                    state.joint -= grossNeeded;
-                    needed = 0;
-                } else {
-                    const net = availJoint * (1 - effectiveRate);
-                    updateComponents('joint', -availJoint);
-                    state.joint -= availJoint;
-                    needed -= net;
-                }
-            }
-
-            // 3. Inherited IRA
-            if (needed > 0 && state.inherited > 0) {
-                const grossNeeded = needed / (1 - taxRate);
-                if (state.inherited >= grossNeeded) {
-                    updateComponents('inherited', -grossNeeded);
-                    state.inherited -= grossNeeded;
-                    needed = 0;
-                } else {
-                    const net = state.inherited * (1 - taxRate);
-                    updateComponents('inherited', -state.inherited);
-                    state.inherited = 0;
-                    needed -= net;
-                    if (!state.iraEvents.depleted) { events.push({ date: dateStr, text: "Inherited IRA Depleted (Waterfall)" }); state.iraEvents.depleted = true; }
-                }
-            }
-
-            // 4. Retirement (401k/403b) - WITH FLOOR
-            if (needed > 0 && state.retirement > 0) {
-                const retirementMin = assumptions.thresholds?.retirementMin || 300000;
-                const availRetirement = Math.max(0, state.retirement - retirementMin);
-                const grossNeeded = needed / (1 - taxRate);
-
-                if (availRetirement >= grossNeeded) {
-                    updateComponents('retirement', -grossNeeded);
-                    state.retirement -= grossNeeded;
-                    needed = 0;
-                } else {
-                    // Drain down to the minimum
-                    const net = availRetirement * (1 - taxRate);
-                    updateComponents('retirement', -availRetirement);
-                    state.retirement -= availRetirement;
-                    needed -= net;
-
-                    if (availRetirement > 0) {
-                        events.push({ date: dateStr, text: "401k Hit Safety Floor (Triggering RM)" });
+            // BRANCH: POST-HOUSING PHASE WATERFALL
+            if (state.postHousingPhase) {
+                // 1. Joint
+                if (needed > 0 && state.joint > 0) {
+                    const effectiveRate = taxRate * 0.5;
+                    const grossNeeded = needed / (1 - effectiveRate);
+                    if (state.joint >= grossNeeded) {
+                         updateComponents('joint', -grossNeeded);
+                         state.joint -= grossNeeded;
+                         needed = 0;
+                    } else {
+                         const net = state.joint * (1 - effectiveRate);
+                         updateComponents('joint', -state.joint);
+                         state.joint = 0;
+                         needed -= net;
                     }
                 }
-            }
 
-            // 5. Reverse Mortgage
-            if (needed > 0) {
-                const hasProperty = Object.values(state.properties).some(p => p.active);
-                if (!state.rmActive && hasProperty) {
-                    state.rmActive = true;
-                    events.push({ date: dateStr, text: "Reverse Mortgage Activated" });
+                // 2. 401k (NO FLOOR)
+                if (needed > 0 && state.retirement > 0) {
+                    const grossNeeded = needed / (1 - taxRate);
+                    if (state.retirement >= grossNeeded) {
+                        updateComponents('retirement', -grossNeeded);
+                        state.retirement -= grossNeeded;
+                        needed = 0;
+                    } else {
+                        const net = state.retirement * (1 - taxRate);
+                        updateComponents('retirement', -state.retirement);
+                        state.retirement = 0;
+                        needed -= net;
+                        events.push({ date: dateStr, text: "401k Fully Depleted (Post-Sale)" });
+                    }
                 }
-                if (state.rmActive && hasProperty) {
-                    state.reverseMortgage += needed;
-                    rmCurrentYear.draws += needed;
+
+                // 3. Cash Last
+                if (needed > 0 && state.cash > 0) {
+                    const availCash = state.cash;
+                    if (availCash >= needed) {
+                        updateComponents('cash', -needed);
+                        state.cash -= needed;
+                        needed = 0;
+                    } else {
+                        updateComponents('cash', -availCash);
+                        state.cash = 0;
+                        needed -= availCash;
+                    }
+                }
+
+                shortfall = needed;
+            }
+            // BRANCH: STANDARD WATERFALL
+            else {
+                // 1. Cash (Floor)
+                const availCash = Math.max(0, state.cash - cashMin);
+                if (availCash >= needed) {
+                    updateComponents('cash', -needed);
+                    state.cash -= needed;
                     needed = 0;
+                } else {
+                    updateComponents('cash', -availCash);
+                    state.cash -= availCash;
+                    needed -= availCash;
                 }
-                else shortfall = needed;
+
+                // 2. Joint
+                if (needed > 0) {
+                    const jointMin = assumptions.thresholds?.jointMin || 0;
+                    const availJoint = Math.max(0, state.joint - jointMin);
+                    const effectiveRate = taxRate * 0.5;
+                    const grossNeeded = needed / (1 - effectiveRate);
+                    if (availJoint >= grossNeeded) {
+                        updateComponents('joint', -grossNeeded);
+                        state.joint -= grossNeeded;
+                        needed = 0;
+                    } else {
+                        const net = availJoint * (1 - effectiveRate);
+                        updateComponents('joint', -availJoint);
+                        state.joint -= availJoint;
+                        needed -= net;
+                    }
+                }
+
+                // 3. Inherited IRA
+                if (needed > 0 && state.inherited > 0) {
+                    const grossNeeded = needed / (1 - taxRate);
+                    if (state.inherited >= grossNeeded) {
+                        updateComponents('inherited', -grossNeeded);
+                        state.inherited -= grossNeeded;
+                        needed = 0;
+                    } else {
+                        const net = state.inherited * (1 - taxRate);
+                        updateComponents('inherited', -state.inherited);
+                        state.inherited = 0;
+                        needed -= net;
+                        if (!state.iraEvents.depleted) { events.push({ date: dateStr, text: "Inherited IRA Depleted (Waterfall)" }); state.iraEvents.depleted = true; }
+                    }
+                }
+
+                // 4. Retirement (Floor + RM Trigger)
+                if (needed > 0 && state.retirement > 0) {
+                    const retirementMin = assumptions.thresholds?.retirementMin || 300000;
+
+                    const availRetirement = Math.max(0, state.retirement - retirementMin);
+
+                    if (!state.rmActive && availRetirement > 0) {
+                         const grossNeeded = needed / (1 - taxRate);
+                         if (availRetirement >= grossNeeded) {
+                             updateComponents('retirement', -grossNeeded);
+                             state.retirement -= grossNeeded;
+                             needed = 0;
+                         } else {
+                             const net = availRetirement * (1 - taxRate);
+                             updateComponents('retirement', -availRetirement);
+                             state.retirement -= availRetirement;
+                             needed -= net;
+                         }
+                    }
+                }
+
+                // 5. Reverse Mortgage
+                if (needed > 0) {
+                    const hasProperty = Object.values(state.properties).some(p => p.active);
+
+                    // ACTIVATE RM
+                    if (!state.rmActive && hasProperty) {
+                        state.rmActive = true;
+
+                        // PAYOFF EXISTING MORTGAGES
+                        let existingMortgageBalance = 0;
+                        state.activeLoans.forEach(lid => {
+                             const loan = data.loans[lid];
+                             if (loan.type === 'mortgage') {
+                                 const sched = loanScheduleMap[lid];
+                                 const currentInfo = isMonthly ? sched[monthKey] : sched[`${year}-12-31`];
+                                 if (currentInfo) {
+                                     existingMortgageBalance += currentInfo.balance;
+                                     state.closedLoans.add(lid);
+                                     state.activeLoans.delete(lid);
+                                 }
+                             }
+                        });
+
+                        if (existingMortgageBalance > 0) {
+                            state.reverseMortgage += existingMortgageBalance;
+                            events.push({ date: dateStr, text: `Reverse Mortgage Activated. Paid off $${Math.round(existingMortgageBalance).toLocaleString()} existing debt.` });
+                        } else {
+                            events.push({ date: dateStr, text: "Reverse Mortgage Activated" });
+                        }
+                    }
+
+                    if (state.rmActive && hasProperty) {
+                        state.reverseMortgage += needed;
+                        rmCurrentYear.draws += needed;
+                        needed = 0;
+                    } else {
+                        shortfall = needed;
+                    }
+                }
             }
         }
 
@@ -618,7 +745,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             year, month: isMonthly ? monthIndex : 12, date: dateStr,
             age: brianAge, andreaAge,
             income: periodIncome, expenses: periodExpenses, netCashFlow,
-            balances: { ...state, property: totalActivePropValue, liquid: state.cash + state.joint, totalDebt: totalActiveLoanBalance }, // EXPORT TOTAL DEBT
+            balances: { ...state, property: totalActivePropValue, liquid: state.cash + state.joint, totalDebt: totalActiveLoanBalance },
             components: JSON.parse(JSON.stringify(state.components)),
             flows: JSON.parse(JSON.stringify(state.annualFlows)),
             netWorth: state.netWorth, shortfall
