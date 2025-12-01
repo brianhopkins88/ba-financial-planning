@@ -1,6 +1,6 @@
 # BA Financial Analysis – Requirements Specification
 
-Version: **1.0** (Final Baseline – Incorporates Cash Flow Manager, Balance Sheet Dashboard, and Engine Hardening.)
+Version: **1.1** (Includes Scenario Management, AI Interoperability, and Advanced Lifecycle Logic)
 
 Date: **November 30th, 2025**
 
@@ -27,12 +27,11 @@ Date: **November 30th, 2025**
      - Balance Sheet (Assets vs Liabilities).
      - Event log (retirement, SS start, IRA depletion, reverse mortgage events, home sale, out of money).
   4. User adjusts parameters (working years, spending levels, asset rules, etc.) and re-runs.
-  5. When satisfied, user **saves the Scenario** and **exports all scenario + projection data as JSON**.
+  5. When satisfied, user **saves the Scenario** or creates a new one via **Save As**.
+  6. User **exports data** for external analysis (AI-Ready JSON).
 
 - **Design principle:**
-  - **No hard-coded financial constants.** All numeric values (rates, thresholds, horizons, minimums, maximums) must be stored as **parameters** in:
-    - **Global Assumptions** (if used across modules), or
-    - The relevant module (if local to that module).
+  - **No hard-coded financial constants.** All numeric values (rates, thresholds, horizons, minimums, maximums) must be stored as **parameters**.
 
 ---
 
@@ -41,202 +40,141 @@ Date: **November 30th, 2025**
 ### 1.1 Scenario-Based Data Model
 
 - **Core concept:**
-  - All financial configuration and output is captured in **Scenarios**. No global mutable state outside the active Scenario.
+  - All financial configuration and output is captured in **Scenarios**. The application maintains a registry of multiple scenarios in memory simultaneously.
+  - **Default Scenario:** On fresh startup, the app loads a template named **"Example Scenario"**.
 
-- **Root structure:**
+- **Root structure (`application_data.json`):**
   - `scenarios`: Comprehensive financial snapshots, each containing:
     - Income configurations (Salary, Bonus, Work Status).
     - Expense configurations (Recurring Bills, Housing, One-Offs, Fun Money).
     - Liabilities (Loans, Mortgages, HELOCs).
     - Assets & Property configurations.
     - Global Assumptions (rates, thresholds, tax schedules, etc.).
-    - Financial Engine outputs (monthly/annual projections, net worth, event logs).
-  - `profiles`: Reusable partial configurations for **Income** and **Expenses** that can be applied to multiple scenarios.
+  - `profiles`: Reusable partial configurations for **Income** and **Expenses**.
 
 - **Data persistence:**
-  - **Local storage:**
-    - Application automatically saves the full active Scenario to browser `localStorage` whenever edits occur.
-  - **Export:**
-    - User can export the active Scenario to a **single JSON file**.
-    - Export must bundle:
-      - Scenario input data (Assumptions, Income, Expenses, Liabilities, Assets & Property).
-      - Any **linked Profiles** (income/expense profiles used by this Scenario).
-      - **Projection Output** from the Financial Engine:
-        - First 5 years **monthly** cash-flow and net-worth details.
-        - Remaining horizon **annual** details.
-        - Event log entries.
-  - **Import:**
-    - **Upload to Current:** Overwrites the active scenario with data from a file.
-    - **Upload as New:** Creates a new scenario from a file.
+  - **Local storage:** Automatically saves the full state to browser `localStorage` on any change.
+  - **Scenario Management:**
+    - **Save As (Clone):** Duplicate the active scenario into a new slot with a custom name.
+    - **Rename/Delete:** Manage scenarios directly.
+    - **Safety Rule:** The system **prevents deletion of the last scenario**. If attempted, it warns the user and resets the application to the default "Example Scenario".
+
+- **AI-Ready Export:**
+  - **Format:** Single JSON file containing **ALL** saved scenarios.
+  - **Enrichment:** The export process runs a full simulation for every scenario and embeds:
+    - Full **Projection Timeline** (Net Worth, Cash Flow, Balances per year).
+    - **Event Logs**.
+    - **System Documentation:** A meta-block describing the engine's rules (Inflation, Taxes, Waterfall) to assist external AI analysis.
+
+- **Import Logic:**
+  - **Merge Mode:** Adds imported scenarios to the current session (preserves existing work).
+  - **Overwrite Mode:** Replaces the entire current session with the imported file.
+  - **Sanitization:** Automatically strips heavy "AI metadata" (simulation outputs) during import to keep the application lightweight.
 
 ### 1.2 Global User Interface (App Shell)
 
 - **Sidebar Navigation:**
-  - **Global actions:** Save, Export Scenario, Export Full Source (Dev), Upload, Create Blank, Clear.
-  - **Scenario selector:** Dropdown with:
-    - Rename Scenario.
-    - Clone Scenario.
-    - Delete Scenario.
-  - **Module links:**
-    - Dashboard (Balance Sheet & Summary).
-    - Cash Flow (Income & Expenses Unified).
-    - Liabilities (Loans & Debt).
-    - Assets & Property.
-    - Assumptions.
+  - **Global Actions:** Save Session, Export Full Data (AI), Import/Restore, Create Blank, Reset to Defaults.
+  - **Scenario Selector:**
+    - Dropdown list of all scenarios.
+    - Inline buttons for **Save As (Copy)**, **Rename**, and **Delete**.
+  - **Module Links:** Dashboard, Cash Flow, Liabilities, Assets, Assumptions.
 
-- **Top bar – Global Date Engine (Time Machine):**
-  - Displays:
-    - **Scenario Start Date** (Month/Year).
-    - **Current Model Cursor** (Month/Year), which indicates the point in the projection currently being inspected.
-  - **Persistence:**
-    - Current Model Cursor is stored in Scenario data and restored on reload.
-  - **Navigation controls:**
-    - Back/Forward arrows.
-    - **Press & Hold acceleration:**
-      - Step 1: Month-by-month.
-      - Step 2: Quarter jumps.
-      - Step 3: Year jumps.
-    - Optional manual Month/Year selector.
-
-### 1.3 Profiles (Reusable Configurations)
-
-- **Definition and scope:**
-  - **Profiles** are reusable configuration objects that capture parameter sets for one module or sub-module (Income or Expenses).
-  - A Profile is **module-scoped** but can be **reused across multiple Scenarios**.
-
-- **Association to Scenarios:**
-  - A Profile can be **linked** to one or more Scenarios.
-  - Within a Scenario, **module-scoped Profiles** (especially Expense Profiles) may be attached as a **time-phased sequence**, where each Profile includes a Start Date and the Engine selects the active profile for each period.
-
-- **Persistence model:**
-  - Profiles are persisted via Scenario JSON exports/imports to maintain portability without a backend.
+- **Top bar – Global Date Engine:**
+  - Displays **Scenario Start Date** and **Current Model Cursor** (Time Machine).
+  - **Persistence:** Current Model Cursor is saved per scenario.
 
 ---
 
 ## 2. Financial Modules
 
-### 2.1 Liabilities Manager (Formerly Loans)
+### 2.1 Liabilities Manager
 
-- **Loan types:**
-  1. **Mortgage** (linked to Property assets):
-     - Mathematically a fixed-rate, fully amortizing loan.
-     - Grouped separately in Expenses under “Mortgage & Impounds”.
-  2. **Fixed-rate loans** (Auto, Personal, etc.):
-     - Standard amortization.
-  3. **Revolving loans** (HELOC, Credit Cards):
-     - Interest is calculated on daily/monthly balance using a rate defined in Assumptions or at loan level.
-  4. **System: Reverse Mortgage (R-HELOC):**
-     - A special **system-generated** virtual liability created by the engine.
-     - **Visibility:** Only appears in the list if active in the simulation.
-     - **Details View:** Read-only table showing Year-by-Year balance, interest accrual, draws, and LTV ratio.
-
-- **Payoff profiles (strategies):**
-  - Each loan can have one or more **payoff strategies**, including:
-    - Base amortization (standard schedule).
-    - Extra Principal payments (monthly grid).
-  - **Drag-to-Fill:** UI affordance to batch-fill Extra Principal values down a time grid.
-
-- **Integration:** Extra Principal payments defined here are automatically injected into the **Cash Flow** module as read-only "Debt" expenses to ensure budget accuracy.
+- **Loan types:** Mortgage, Fixed-rate, Revolving (HELOC).
+- **System Reverse Mortgage:**
+  - A virtual liability automatically created by the Financial Engine when specific triggers are met.
+  - Only visible when active in the simulation.
+  - **Auto-Payoff Rule:** When the Reverse Mortgage activates, the engine automatically **pays off any existing "Mortgage" type loans** and rolls their balance into the new Reverse Mortgage line.
 
 ### 2.2 Cash Flow Manager
 
-- **Unified Interface:** Tabbed view toggling between **Income** and **Expenses** with a top-level **Net Cash Flow Summary** (Green/Red bar chart) driven by the engine.
-
-#### 2.2.1 Income Inputs
-- **Base Salary & Bonus:** Inflation-adjusted annually.
-- **Work Status:** 15-year trajectory of FTE (0.0 - 1.0).
-- **Social Security:** Configurable Start Age and Amount. **First-Year Proration** based on birth month.
-- **Pension:** Inflation-adjusted, auto-starts when FTE drops to 0.
-- **Profiles:** Independent "Income Profiles" can be saved and sequenced.
-
-#### 2.2.2 Expense Inputs
-- **Recurring Bills:** Categorized (Bills, Home, Living, Impounds).
-- **Liabilities Integration:** Auto-displays debt service (P&I + Extra Principal) from the Liabilities module.
-- **Extra Expense Planning (Scenario-Driven):**
-  - **One-Offs:** Specific future expenses (e.g., Wedding 2028).
-  - **Retirement Fun Money:** Annual budgets defined by 5-year age brackets (Age 65-90). Changes here reflect immediately in projections.
-- **Profiles:** "Expense Profiles" manage recurring bills and housing transitions.
+- **Unified Interface:** Income and Expenses tabs with a "Net Cash Flow" summary chart.
+- **Joint Account Logic:**
+  - Deposits to the Joint Account are the sum of:
+    1. **Cash Flow Surplus:** Any monthly income remaining after expenses and debt (once Cash Savings is full).
+    2. **Asset Transfers:** Net proceeds from Inherited IRA RMDs or Property Sales.
 
 ### 2.3 Assets & Property Manager
 
-- **Asset Types:** Cash, Joint Investment, Inherited IRA, Retirement (401k), Property.
-- **Global Thresholds Integration:**
-  - UI allows editing global engine rules directly within the relevant asset context:
-    - **Cash:** `Cash Floor (Min)` and `Surplus Cap (Max)`.
-    - **Joint:** `Depletion Floor`.
-    - **Retirement:** `Safety Floor (RM Trigger)`.
+- **Inherited IRA Refinement:**
+  - **Dates:**
+    - **Inheritance Start Date:** Determines the 10-year depletion deadline.
+    - **Current Balance Date:** The date of the entered balance (usually Scenario Start).
+  - **10-Year Rule:** The system calculates the deadline (Start + 10 years).
+  - **Schedule UI:**
+    - Dynamically generates input boxes **only** for the years remaining between Scenario Start and the Deadline.
+    - Inputs are keyed to **Calendar Years** (e.g., 2026, 2027), not relative indices.
+    - **Default Value:** New/Empty years default to **20%** withdrawal to ensure the projection table populates immediately.
+    - **Final Year Lock:** The 10th year is hard-locked to **100% (1.0)** to strictly enforce depletion.
 
-- **Future Assets:** Supports "Start Date" in the future (e.g., future inheritance). Balance is excluded from start (Day 0) and injected into the simulation when the date is reached.
-
-#### 2.3.1 Visualization Requirements
-- **Liquid Assets:** **Bi-Directional Stacked Bar Chart**.
-  - Positive Stack: Opening Balance (Grey) + Annual Deposits (Blue) + Annual Growth (Green).
-  - Negative Bar: Annual Withdrawals (Red).
-  - **Start Bar:** Year 0 must explicitly show the initial balance using a derived "Opening Balance" calculation.
-- **Property:** Stacked Bar (Net Equity vs Linked Debt).
-- **Linked Liabilities:** Property assets allow checking/unchecking specific loans to calculate Net Equity dynamically.
-
-#### 2.3.2 Inherited IRA
-- **10-Year Rule:** Enforced depletion schedule.
-- **Taxation:** Progressive tax tiers (32%, 40%, 48%) for large withdrawals.
-
-#### 2.3.3 Retirement (401k) Contributions
-- **Brian:** Employee Contribution + **Employer Match** (50% of the first 6% of salary).
-- **Andrea:** Employee Contribution only (No Match).
+- **Property Logic:**
+  - **Linked Loans:** User can link specific liabilities to a property to calculate "Net Equity" in charts.
+  - **Forced Sale:** If the Financial Engine triggers a sale (due to LTV limits), the asset is marked inactive for future years.
 
 ---
 
-## 3. Financial Engine & Projections
+## 3. Financial Engine & Lifecycle Phases
 
-### 3.1 Timebase & Resolution
-- **Hybrid:** Monthly for years 1-5, Annual for years 6-35.
-- **Day 0 Snapshot:** Engine calculates a specific "Month 0" state to represent starting balances before any flows occur.
+The simulation logic is refactored into **Three Lifecycle Phases**, each with unique cash-flow rules.
 
-### 3.2 Cash Flow Waterfall (Deficit Rules)
-When **Expenses > Income**:
-1. **Cash Savings** (down to `cashMin`).
-2. **Joint Investment** (down to `jointMin`).
-3. **Inherited IRA** (accelerated withdrawals).
-4. **401k / 403B** (tax-deferred withdrawals).
-   - **Safety Floor:** If 401k hits `retirementMin` (default $300k) and deficit persists, stop withdrawing and trigger Reverse Mortgage.
-5. **Reverse Mortgage (R-HELOC)** (if eligible).
-6. **Forced Home Sale:** If R-HELOC hits LTV limit.
+### 3.1 Phase 1: Standard Retirement (Accumulation/Decumulation)
+- **Condition:** Liquid assets exist, and 401k is above the **Safety Floor** (e.g., $300k).
+- **Deficit Waterfall:**
+  1. **Cash Savings** (down to `cashMin`).
+  2. **Joint Investment** (down to `jointMin`).
+  3. **Inherited IRA** (accelerated withdrawals beyond schedule).
+  4. **401k / 403b** (taxable withdrawals, stop at `retirementMin`).
 
-### 3.3 Reverse Mortgage Logic
-- **Trigger:** 401k at Minimum Floor + Liquid Assets Depleted + Deficit Exists.
-- **Tracking:** Interest and Draws are tracked separately. Interest compounds at `reverseMortgageRate`.
-- **LTV Limits:** Age-based limits (40%/50%/60%) trigger forced sale.
+### 3.2 Phase 2: Reverse Mortgage (Active-RM)
+- **Trigger:** Liquid assets depleted AND 401k hits `retirementMin`.
+- **Actions:**
+  - **Activate R-HELOC:** A new liability is created.
+  - **Consolidate Debt:** Existing mortgages are paid off and added to the R-HELOC balance.
+- **Waterfall Change:**
+  - **401k withdrawals STOP** to preserve the safety floor.
+  - All deficits are funded by drawing on the Reverse Mortgage.
+  - Interest accrues monthly on the R-HELOC balance.
 
-### 3.4 Net Worth Calculation
-- **Formula:** `(Cash + Joint + Inherited + Retirement + Property Value) - (System Reverse Mortgage + Sum of All Active Loan Balances)`.
-- **Loan Balances:** Must include balances for all active loans, even if payments are deferred or 0 for a specific period.
-
-### 3.5 Income Inflation Rule
-- **Rule:** The Financial Engine must apply the **General Inflation Rate** annually to:
-  - Base Salary.
-  - Annual Bonus.
-  - Social Security (or SS-specific rate).
-  - Pension (if inflation-adjusted).
+### 3.3 Phase 3: Post-Housing (Forced Sale / End-of-Life)
+- **Trigger:** Reverse Mortgage Balance hits the age-based **LTV Limit** (e.g., 50% at age 80).
+- **Actions:**
+  - **Forced Sale:** The property is sold at current projected market value.
+  - **Payoff:** Proceeds pay off the R-HELOC (and any other secured debt).
+  - **Proceeds Distribution:**
+    1. Top off **Cash Savings** (up to `cashMax`).
+    2. Remaining funds deposited to **Joint Investment**.
+- **Waterfall Change (Solvency Mode):**
+  - The **401k Safety Floor is removed**.
+  - Deficit Funding Order:
+    1. **Joint Investment** (Sale proceeds).
+    2. **401k** (Fully depletable).
+    3. **Cash** (Fully depletable).
+  - **Insolvency:** "Out of Money" is only flagged if all these sources reach $0.
 
 ---
 
 ## 4. Dashboard & Reporting
 
 - **Balance Sheet Chart:**
-  - **Stacked Bar Chart** representing the Accounting Equation.
-  - **Positive Stack (Assets):** Cash, Joint, IRA, Retirement, Property.
-  - **Negative Stack (Liabilities):** Standard Debt (Red), Reverse Mortgage (Orange).
-  - **Line Overlay:** Net Worth.
+  - Stacked Bar Chart: Assets (Positive) vs. Liabilities (Negative).
+  - **Assets:** Cash, Joint, IRA, Retirement, Net Property Equity.
+  - **Liabilities:** Standard Debt (Red), Reverse Mortgage (Orange).
 - **Event Log:**
-  - Logs critical life events: Retirement, SS Start, Loan Payoffs (Monthly or Annual detection), Asset Depletion, RM Activation, Insolvency.
-- **Solvency Check:** "Out of Money" event if all assets are depleted and deficit persists.
+  - Logs transition events: "Reverse Mortgage Activated," "Mortgage Paid Off," "Forced Sale (LTV Limit Hit)," "401k Fully Depleted."
 
 ---
 
 ## 5. Version History
 
-- **1.0:** Final Baseline. Unified Cash Flow, Balance Sheet Dashboard, Hardened Engine (Match Rules, 401k Floor), Liabilities Module renaming.
-- **0.96:** Asset Stacked Visualization, Component Tracking.
-- **0.95:** Income Inflation, Detailed IRA Rules.
-- **0.91:** Integrated time-phased Expense Profiles and housing transition model.
-- **0.9:** Introduced hybrid timebase, cash-flow waterfall, and IARRA.
+- **1.1:** (Current) Added Scenario Management (Save As/Rename), AI Export/Import, Lifecycle Phases (LTV Sale, Post-Sale Spend Down), and Inherited IRA Calendar Logic.
+- **1.0:** Baseline. Unified Cash Flow, Balance Sheet, System Reverse Mortgage.

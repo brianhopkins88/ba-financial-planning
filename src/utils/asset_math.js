@@ -1,4 +1,4 @@
-import { addYears, getYear, parseISO, differenceInYears, isAfter, format } from 'date-fns';
+import { addYears, getYear, parseISO, differenceInYears, isAfter, format, isValid } from 'date-fns';
 import { calculateFixedLoan, calculateRevolvingLoan } from './loan_math';
 
 /**
@@ -21,54 +21,49 @@ export const calculateAssetGrowth = (asset, assumptions, allLoans = {}, horizonY
 
 /**
  * INHERITED IRA PROJECTION
- * Models the 10-year depletion rule with scheduled withdrawals.
+ * Models the 10-year depletion rule with scheduled withdrawals based on specific calendar years.
+ * Now defaults empty years to 20% (0.20) to ensure the table populates with active withdrawals.
  */
 export const projectInheritedIra = (asset, assumptions, horizonYears) => {
-    const startYear = assumptions.timing?.startYear || new Date().getFullYear();
+    const simStartYear = assumptions.timing?.startYear || new Date().getFullYear();
     const rate = assumptions.market?.initial || 0.07;
 
-    // IRA Specifics
-    const startDateStr = asset.inputs?.startDate || `${startYear}-01-01`;
-    const startDate = parseISO(startDateStr);
-    const startYearIra = getYear(startDate);
+    // 1. Determine Key Dates
+    // Start Date: When original owner died (starts the 10-year clock)
+    const startDateStr = asset.inputs?.startDate;
+    const startDate = startDateStr ? parseISO(startDateStr) : new Date(simStartYear, 0, 1);
+    const startYearIra = isValid(startDate) ? getYear(startDate) : simStartYear;
 
-    // Determine First Withdrawal Year
-    // If started after Jan 15, first withdrawal is next year
-    const cutoffDate = new Date(startYearIra, 0, 15); // Jan 15
-    const firstWithdrawalYear = isAfter(startDate, cutoffDate) ? startYearIra + 1 : startYearIra;
-    const finalWithdrawalYear = firstWithdrawalYear + 9; // 10 years total (0 to 9)
+    // 10-Year Rule: Must be empty by Dec 31 of the 10th year following death
+    const finalYear = startYearIra + 10;
 
-    const schedule = asset.inputs?.withdrawalSchedule || [0.1, 0.1, 0.1, 0.1, 0.1, 0.25, 0.25, 0.25, 0.25, 1.0];
+    const schedule = asset.inputs?.withdrawalSchedule || {};
 
     let currentBalance = asset.balance || 0;
     const projection = [];
     let cumulativeWithdrawals = 0;
 
     for (let t = 0; t <= horizonYears; t++) {
-        const currentYear = startYear + t;
-
-        let withdrawalPct = 0;
+        const currentYear = simStartYear + t;
         let withdrawalAmount = 0;
         let taxRate = 0;
         let netAmount = 0;
         let janBalance = currentBalance;
         let isActive = false;
 
-        // Logic: Withdrawal happens Jan 15
-        // Check if this year is within the withdrawal window
-        if (currentYear >= firstWithdrawalYear && currentYear <= finalWithdrawalYear) {
+        // Logic: Withdrawal happens in January if balance > 0
+        if (currentYear >= startYearIra && currentYear <= finalYear && currentBalance > 0) {
             isActive = true;
-            // Map current year to schedule index (0-9)
-            const scheduleIdx = currentYear - firstWithdrawalYear;
+            let withdrawalPct = 0;
 
-            // Force 100% on final year, otherwise use schedule
-            withdrawalPct = (currentYear === finalWithdrawalYear)
-                ? 1.0
-                : (schedule[scheduleIdx] !== undefined ? schedule[scheduleIdx] : 0.1);
+            if (currentYear === finalYear) {
+                withdrawalPct = 1.0; // Force empty
+            } else {
+                // Look for explicit year key, default to 0.20 (20%)
+                withdrawalPct = schedule[currentYear] !== undefined ? schedule[currentYear] : 0.20;
+            }
 
             withdrawalAmount = janBalance * withdrawalPct;
-
-            // Safety cap
             if (withdrawalAmount > janBalance) withdrawalAmount = janBalance;
 
             // Tax Logic
@@ -80,11 +75,6 @@ export const projectInheritedIra = (asset, assumptions, horizonYears) => {
             netAmount = withdrawalAmount * (1 - taxRate);
             currentBalance -= withdrawalAmount;
             cumulativeWithdrawals += withdrawalAmount;
-        }
-        else if (currentYear > finalWithdrawalYear) {
-            // Should be empty
-            currentBalance = 0;
-            janBalance = 0;
         }
 
         // Apply Growth (remaining balance grows)
@@ -103,7 +93,7 @@ export const projectInheritedIra = (asset, assumptions, horizonYears) => {
             withdrawal: withdrawalAmount,
             netProceeds: netAmount,
             taxRate: taxRate,
-            isActive: isActive || (currentYear === startYearIra)
+            isActive: isActive
         });
     }
 

@@ -1,18 +1,23 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import initialData from '../data/hgv_data.json';
+import initialData from '../data/application_data.json';
 import { cloneDeep, set } from 'lodash';
 import { format, parseISO, isValid } from 'date-fns';
 
 const DataContext = createContext();
 
-// CHANGED: Version bump to force reload of data
-const STORAGE_KEY = 'ba_financial_planner_v096';
+const STORAGE_KEY = 'ba_financial_planner_v1.1';
 
 export const DataProvider = ({ children }) => {
 
   // --- 1. LOADER ---
   const [store, setStore] = useState(() => {
     let data = cloneDeep(initialData);
+
+    // ENFORCE: Initial scenario is "Example Scenario"
+    if (data.scenarios['scen_default']) {
+        data.scenarios['scen_default'].name = "Example Scenario";
+    }
+
     try {
       const local = localStorage.getItem(STORAGE_KEY);
       if (local) {
@@ -46,12 +51,12 @@ export const DataProvider = ({ children }) => {
   const activeScenario = store.scenarios[activeId];
 
   const [simulationDate, setSimulationDate] = useState(() => {
-      const savedDateStr = activeScenario.data.assumptions?.currentModelDate || activeScenario.data.globals?.currentModelDate;
+      const savedDateStr = activeScenario?.data?.assumptions?.currentModelDate || activeScenario?.data?.globals?.currentModelDate;
       return (savedDateStr && isValid(parseISO(savedDateStr))) ? parseISO(savedDateStr) : new Date(2026, 0, 1);
   });
 
   useEffect(() => {
-      if (!isLoaded || !activeId) return;
+      if (!isLoaded || !activeId || !activeScenario) return;
       const dateStr = format(simulationDate, 'yyyy-MM-dd');
       const currentStoredDate = activeScenario.data.assumptions?.currentModelDate || activeScenario.data.globals?.currentModelDate;
 
@@ -65,7 +70,7 @@ export const DataProvider = ({ children }) => {
               return newData;
            });
       }
-  }, [simulationDate, activeId, isLoaded]);
+  }, [simulationDate, activeId, isLoaded, activeScenario]);
 
   // --- ACTIONS ---
 
@@ -85,33 +90,29 @@ export const DataProvider = ({ children }) => {
   };
 
   const setSimulationMonth = (val) => setSimulationDate(val);
-
   const saveAll = () => { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); return true; };
 
   const resetActiveScenario = () => {
       setStore(prev => {
           const next = cloneDeep(prev);
           const defaultScen = cloneDeep(initialData.scenarios['scen_default']);
+          defaultScen.name = "Example Scenario";
           next.scenarios[activeId].data = defaultScen.data;
+          next.scenarios[activeId].name = defaultScen.name;
           return next;
       });
       window.location.reload();
   };
 
-  // --- ASSET ACTIONS ---
+  // Asset & Loan Actions (Preserved)
   const addAsset = (type) => {
       setStore(prev => {
           const newData = cloneDeep(prev);
           const newId = `acct_${Date.now()}`;
           if (!newData.scenarios[activeId].data.assets.accounts) newData.scenarios[activeId].data.assets.accounts = {};
-
-          const defaults = {
-              id: newId, type, name: "New Account", balance: 0, owner: 'joint', active: true,
-              inputs: {}
-          };
+          const defaults = { id: newId, type, name: "New Account", balance: 0, owner: 'joint', active: true, inputs: {} };
           if (type === 'property') defaults.inputs = { buildYear: 2020, zipCode: '' };
           if (type === 'inherited') defaults.inputs = { endDate: '2035-12-31' };
-
           newData.scenarios[activeId].data.assets.accounts[newId] = defaults;
           return newData;
       });
@@ -127,72 +128,28 @@ export const DataProvider = ({ children }) => {
       });
   };
 
-  // --- LOAN ACTIONS ---
   const addLoan = (overrides = {}) => setStore(p => {
       const c = cloneDeep(p);
       const lid = `loan_${Date.now()}`;
       if(!c.scenarios[activeId].data.loans) c.scenarios[activeId].data.loans={};
-
       const defaults = {
-          id: lid,
-          name: "New Loan",
-          type: "fixed",
-          active: true,
+          id: lid, name: "New Loan", type: "fixed", active: true,
           inputs: { principal: 10000, rate: 0.05, payment: 200, startDate: '2026-01-01', termMonths: 360 },
-          activeStrategyId: 'base',
-          strategies: { base: { name: 'Base', extraPayments: {} } }
+          activeStrategyId: 'base', strategies: { base: { name: 'Base', extraPayments: {} } }
       };
-
-      c.scenarios[activeId].data.loans[lid] = {
-          ...defaults,
-          ...overrides,
-          inputs: { ...defaults.inputs, ...(overrides.inputs || {}) }
-      };
+      c.scenarios[activeId].data.loans[lid] = { ...defaults, ...overrides, inputs: { ...defaults.inputs, ...(overrides.inputs || {}) } };
       return c;
   });
 
-  const deleteLoan = (lid) => setStore(p => {
-      const c = cloneDeep(p);
-      delete c.scenarios[activeId].data.loans[lid];
-      return c;
-  });
+  const deleteLoan = (lid) => setStore(p => { const c = cloneDeep(p); delete c.scenarios[activeId].data.loans[lid]; return c; });
+  const batchUpdateLoanPayments = (lid, sid, u) => setStore(p => { const c = cloneDeep(p); const t = c.scenarios[activeId].data.loans[lid].strategies[sid].extraPayments; Object.entries(u).forEach(([k,v]) => v <= 0 ? delete t[k] : t[k] = v); return c; });
+  const addLoanStrategy = (lid, n) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; l.strategies[`strat_${Date.now()}`] = { name: n, extraPayments: {} }; return c; });
+  const renameLoanStrategy = (lid, sid, n) => setStore(p => { const c = cloneDeep(p); c.scenarios[activeId].data.loans[lid].strategies[sid].name = n; return c; });
+  const duplicateLoanStrategy = (lid, sid, n) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; l.strategies[`strat_${Date.now()}`] = { ...cloneDeep(l.strategies[sid]), name: n }; return c; });
+  const deleteLoanStrategy = (lid, sid) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; delete l.strategies[sid]; if(l.activeStrategyId === sid) l.activeStrategyId = Object.keys(l.strategies)[0]; return c; });
 
-  const batchUpdateLoanPayments = (lid, sid, u) => setStore(p => {
-      const c = cloneDeep(p);
-      const t = c.scenarios[activeId].data.loans[lid].strategies[sid].extraPayments;
-      Object.entries(u).forEach(([k,v]) => v <= 0 ? delete t[k] : t[k] = v);
-      return c;
-  });
+  // --- SCENARIO MANAGEMENT UPDATES ---
 
-  const addLoanStrategy = (lid, n) => setStore(p => {
-      const c = cloneDeep(p);
-      const l = c.scenarios[activeId].data.loans[lid];
-      l.strategies[`strat_${Date.now()}`] = { name: n, extraPayments: {} };
-      return c;
-  });
-
-  const renameLoanStrategy = (lid, sid, n) => setStore(p => {
-      const c = cloneDeep(p);
-      c.scenarios[activeId].data.loans[lid].strategies[sid].name = n;
-      return c;
-  });
-
-  const duplicateLoanStrategy = (lid, sid, n) => setStore(p => {
-      const c = cloneDeep(p);
-      const l = c.scenarios[activeId].data.loans[lid];
-      l.strategies[`strat_${Date.now()}`] = { ...cloneDeep(l.strategies[sid]), name: n };
-      return c;
-  });
-
-  const deleteLoanStrategy = (lid, sid) => setStore(p => {
-      const c = cloneDeep(p);
-      const l = c.scenarios[activeId].data.loans[lid];
-      delete l.strategies[sid];
-      if(l.activeStrategyId === sid) l.activeStrategyId = Object.keys(l.strategies)[0];
-      return c;
-  });
-
-  // --- SCENARIO MANAGEMENT ---
   const createScenario = (name, cloneData) => {
        setStore(prev => {
            const newId = `scen_${Date.now()}`;
@@ -201,6 +158,10 @@ export const DataProvider = ({ children }) => {
            newScen.id = newId;
            newScen.name = name;
            if(newScen.linkedProfiles) delete newScen.linkedProfiles;
+
+           // Clean up any AI metadata if cloning from an imported AI object
+           delete newScen.__simulation_output;
+           delete newScen.__assumptions_documentation;
 
            return {
                ...prev,
@@ -220,77 +181,65 @@ export const DataProvider = ({ children }) => {
 
   const deleteScenario = (id) => setStore(p => {
       const d = cloneDeep(p);
-      if(Object.keys(d.scenarios).length <= 1) return p;
+
+      // 2. Prevent deleting last scenario (Warn & Reset)
+      if(Object.keys(d.scenarios).length <= 1) {
+          if (confirm("You are deleting the last scenario. This will reset the application to the Example Scenario. Continue?")) {
+              const defaultScen = cloneDeep(initialData.scenarios['scen_default']);
+              defaultScen.name = "Example Scenario";
+              const newScenarios = {};
+              newScenarios[defaultScen.id] = defaultScen;
+
+              return {
+                  ...d,
+                  meta: { ...d.meta, activeScenarioId: defaultScen.id },
+                  scenarios: newScenarios
+              };
+          }
+          return p; // Abort
+      }
+
+      // Normal Delete
       delete d.scenarios[id];
-      if(d.meta.activeScenarioId === id) d.meta.activeScenarioId = Object.keys(d.scenarios)[0];
+
+      // If we deleted the active one, switch to another
+      if(d.meta.activeScenarioId === id) {
+          d.meta.activeScenarioId = Object.keys(d.scenarios)[0];
+      }
       return d;
   });
 
-  const importToActive = (json) => setStore(p => {
-      const c = cloneDeep(p);
-      if(json.linkedProfiles) c.profiles = { ...c.profiles, ...json.linkedProfiles };
-      c.scenarios[activeId].data = cloneDeep(json.data);
-      return c;
-  });
+  // Import Session
+  const importSession = (importedJson, mode = 'merge') => {
+      setStore(prev => {
+          const newState = cloneDeep(prev);
+          if (importedJson.profiles) {
+              newState.profiles = { ...newState.profiles, ...importedJson.profiles };
+          }
+          const cleanScenarios = {};
+          Object.values(importedJson.scenarios || {}).forEach(scen => {
+              const clean = cloneDeep(scen);
+              delete clean.__simulation_output;
+              delete clean.__assumptions_documentation;
+              cleanScenarios[clean.id] = clean;
+          });
 
-  const importAsNew = (name, json) => setStore(p => {
-      const c = cloneDeep(p);
-      if(json.linkedProfiles) c.profiles = { ...c.profiles, ...json.linkedProfiles };
-      const newId = `scen_${Date.now()}`;
-      c.scenarios[newId] = { ...json, id: newId, name };
-      c.meta.activeScenarioId = newId;
-      return c;
-  });
+          if (mode === 'overwrite') {
+              newState.scenarios = cleanScenarios;
+              const firstId = Object.keys(cleanScenarios)[0];
+              if (firstId) newState.meta.activeScenarioId = firstId;
+          } else {
+              newState.scenarios = { ...newState.scenarios, ...cleanScenarios };
+          }
+          return newState;
+      });
+  };
 
-  // --- PROFILE ACTIONS ---
-  const saveProfile = (type, name, data) => setStore(prev => {
-       const next = cloneDeep(prev);
-       const pid = `prof_${Date.now()}`;
-       if(!next.profiles) next.profiles = {};
-       next.profiles[pid] = { id: pid, name, type, data: cloneDeep(data) };
-
-       if (!next.scenarios[activeId].data[type].profileSequence) {
-           next.scenarios[activeId].data[type].profileSequence = [];
-       }
-       next.scenarios[activeId].data[type].profileSequence.push({
-           profileId: pid,
-           startDate: format(simulationDate, 'yyyy-MM-dd'),
-           isActive: true
-       });
-       return next;
-  });
-
-  const updateProfile = (pid, d) => setStore(p => {
-      const c = cloneDeep(p);
-      if(c.profiles[pid]) c.profiles[pid].data = cloneDeep(d);
-      return c;
-  });
-
-  const renameProfile = (pid, n) => setStore(p => {
-      const c = cloneDeep(p);
-      if(c.profiles[pid]) c.profiles[pid].name = n;
-      return c;
-  });
-
-  const deleteProfile = (pid) => setStore(p => {
-      const c = cloneDeep(p);
-      delete c.profiles[pid];
-      return c;
-  });
-
-  const toggleProfileInScenario = (t, pid, act, date) => setStore(p => {
-      const c = cloneDeep(p);
-      const seq = c.scenarios[activeId].data[t].profileSequence;
-      const exist = seq.find(x => x.profileId === pid);
-      if(exist){
-          exist.isActive = act;
-          if(date) exist.startDate = date;
-      } else {
-          seq.push({ profileId: pid, startDate: date || '2026-01-01', isActive: act });
-      }
-      return c;
-  });
-
+  const saveProfile = (type, name, data) => setStore(prev => { const next = cloneDeep(prev); const pid = `prof_${Date.now()}`; if(!next.profiles) next.profiles = {}; next.profiles[pid] = { id: pid, name, type, data: cloneDeep(data) }; if (!next.scenarios[activeId].data[type].profileSequence) { next.scenarios[activeId].data[type].profileSequence = []; } next.scenarios[activeId].data[type].profileSequence.push({ profileId: pid, startDate: format(simulationDate, 'yyyy-MM-dd'), isActive: true }); return next; });
+  const updateProfile = (pid, d) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].data = cloneDeep(d); return c; });
+  const renameProfile = (pid, n) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].name = n; return c; });
+  const deleteProfile = (pid) => setStore(p => { const c = cloneDeep(p); delete c.profiles[pid]; return c; });
+  const toggleProfileInScenario = (t, pid, act, date) => setStore(p => { const c = cloneDeep(p); const seq = c.scenarios[activeId].data[t].profileSequence; const exist = seq.find(x => x.profileId === pid); if(exist){ exist.isActive = act; if(date) exist.startDate = date; } else { seq.push({ profileId: pid, startDate: date || '2026-01-01', isActive: act }); } return c; });
 
   return (
     <DataContext.Provider value={{
@@ -301,7 +250,7 @@ export const DataProvider = ({ children }) => {
         resetActiveScenario,
         addAsset, deleteAsset,
         addLoan, deleteLoan, batchUpdateLoanPayments, addLoanStrategy, renameLoanStrategy, duplicateLoanStrategy, deleteLoanStrategy,
-        importToActive, importAsNew,
+        importSession,
         saveProfile, updateProfile, renameProfile, deleteProfile, toggleProfileInScenario
       }
     }}>
