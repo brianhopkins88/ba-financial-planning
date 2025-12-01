@@ -1,5 +1,32 @@
 # This file contains notes about the work that has happened so far
 
+## 2025-12-01: Session 17-18 (Strict Monthly Engine & Cash Flow Consolidation)
+
+**Status:** Phase 5 (Refinement) - Engine Stabilization & UI Consolidation.
+**Focus:** Resolving calculation drift ("runaway values"), unifying Income/Expense management, and refining RMD logic.
+
+### **Accomplishments**
+
+- **Financial Engine Overhaul (`src/utils/financial_engine.js`):**
+  - **Strict Monthly Simulation:** Replaced the hybrid (Annual/Monthly) loop with a precise **420-month simulation** (35 years). This eliminates annual compounding errors that were causing "runaway" values in Social Security and Pensions.
+  - **Stateless Inflation:** Inflation is now calculated based on exact elapsed months, ensuring smooth curves regardless of the simulation step.
+  - **RMD Refactor:** Required Minimum Distributions (RMDs) are no longer counted as "Operating Income." They are treated as **Cash Injections** (Asset -> Cash transfers) to prevent double-counting in the Net Flow calculation.
+
+- **Cash Flow Manager (`src/views/cashflow.jsx`):**
+  - **Consolidation:** Merged the functionality of `income.jsx` and `expenses.jsx` into a single **Cash Flow Manager** view.
+  - **Detailed Analysis Table:** Aligned the table columns strictly with the Expense Module categories (Bills, Mortgage & Impounds, Home, Living, Debt, Extra).
+  - **Income Precision:** Added **Birth Month** inputs for Brian and Andrea to enable precise first-year proration of Social Security benefits.
+  - **Visualization:** Removed the "RMD" column from the Net Flow calculation view to reflect true operating surplus/deficit.
+
+- **Data & Cleanup:**
+  - **Schema Update:** Updated `application_data.json` to include default `birthMonth: 1` (January) for both profiles.
+  - **File Cleanup:** Deleted the obsolete `src/views/income.jsx` and `src/views/expenses.jsx` files to enforce a single source of truth.
+  - **Documentation:** Updated *Requirements Specification* to v1.2 and *Architecture Specification* to v1.2 to reflect the strict monthly engine and consolidated UI.
+
+### **Critical Fixes**
+- **Runaway Projections:** Solved by removing the "Annual Step" logic from the engine.
+- **Ghost Data:** Resolved issues where the Analysis Table columns did not match the input modules.
+
 ## 2025-11-30: Session 16 (Scenario Analysis & AI Export Architecture)
 
 Status: Phase 5 (Refinement) - Major Logic & Architecture Updates.

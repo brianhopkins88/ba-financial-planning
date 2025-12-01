@@ -7,8 +7,7 @@ import { addMonths, format } from 'date-fns';
 // Views
 import Assumptions from './views/assumptions';
 import Loans from './views/loans';
-import Expenses from './views/expenses';
-import Income from './views/income';
+import CashFlow from './views/cashflow';
 import Assets from './views/assets';
 
 const Dashboard = () => {
@@ -23,11 +22,8 @@ const Dashboard = () => {
 
 const TopBar = () => {
   const { activeScenario, simulationDate, actions } = useData();
-
-  // FIXED: Updated path from globals -> assumptions
   const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
   const timing = assumptions.timing || { startYear: 2026, startMonth: 1 };
-
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; startTimeRef.current = null; };
@@ -92,8 +88,7 @@ const AppShell = () => {
   const renderView = () => {
     switch(currentView) {
       case 'dashboard': return <Dashboard />;
-      case 'income': return <Income />;
-      case 'expenses': return <Expenses />;
+      case 'cashflow': return <CashFlow />;
       case 'loans': return <Loans />;
       case 'assets': return <Assets />;
       case 'assumptions': return <Assumptions />;
