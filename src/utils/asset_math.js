@@ -135,6 +135,10 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
     const linkedIds = asset.inputs?.linkedLoanIds || (asset.inputs?.linkedLoanId ? [asset.inputs.linkedLoanId] : []);
     const linkedLoans = linkedIds.map(id => allLoans[id]).filter(Boolean);
 
+    // Check for Sell Date
+    const sellDateStr = asset.inputs?.sellDate; // "YYYY-MM-DD"
+    const sellYear = sellDateStr ? parseInt(sellDateStr.substring(0, 4)) : 9999;
+
     // Pre-calculate loan schedules if any
     const loanSchedules = {};
     linkedLoans.forEach(loan => {
@@ -158,6 +162,15 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
         const year = startYear + t;
         const ageAtYearT = initialAge + t;
         const monthKey = `${year}-01`; // Snapshot at January of each year
+
+        // If sold, value is 0
+        if (year > sellYear) {
+             projection.push({
+                year, age: ageAtYearT,
+                value: 0, debt: 0, equity: 0, growthRate: 0, bucket: 'sold'
+             });
+             continue;
+        }
 
         // 1. Calculate Growth
         let bucket = 'mature';

@@ -1,10 +1,11 @@
 // src/views/cashflow.jsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { isEqual } from 'lodash';
 import {
   Plus, Trash2, Save, Receipt, ChevronDown, ChevronRight, Calendar,
   CheckSquare, Square, CreditCard, Pencil, Copy, Table, Palmtree,
-  Settings, TrendingUp, Info
+  Settings, TrendingUp, Info, Cloud, CloudUpload, CheckCircle, AlertCircle, Link as LinkIcon
 } from 'lucide-react';
 import { parseISO, isAfter, format, addMonths, getYear } from 'date-fns';
 import { calculateFixedLoan, calculateRevolvingLoan } from '../utils/loan_math';
@@ -14,8 +15,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 
-// --- HELPER COMPONENTS ---
-
+// --- HELPER COMPONENTS (Unchanged) ---
 const NumberInput = ({ label, value, onChange, step = "1", suffix }) => (
   <div className="flex flex-col space-y-1">
     <label className="text-xs font-bold text-slate-400 uppercase">{label}</label>
@@ -85,13 +85,11 @@ const Accordion = ({ title, total, children, defaultOpen = false, onAdd }) => {
   );
 };
 
-// --- ANALYSIS TABLES ---
-
+// --- ANALYSIS TABLES (Unchanged) ---
 const NetCashFlowSummary = ({ activeScenario, store }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const summaryData = useMemo(() => {
         const simulation = runFinancialSimulation(activeScenario, store.profiles);
-        // Use annual aggregates (Month 12)
         const annuals = simulation.timeline.filter(t => t.month === 12).map(t => ({
             year: t.year,
             netFlow: t.annualData.netCashFlow
@@ -134,7 +132,6 @@ const CashFlowTable = ({ activeScenario, store }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const timeline = useMemo(() => {
         const sim = runFinancialSimulation(activeScenario, store.profiles);
-        // Filter for Annual Summaries (Month 12)
         return sim.timeline.filter(t => t.month === 12);
     }, [activeScenario, store.profiles]);
 
@@ -154,13 +151,9 @@ const CashFlowTable = ({ activeScenario, store }) => {
                              <tr>
                                  <th className="px-3 py-3 border-b border-slate-200 text-slate-800">Year</th>
                                  <th className="px-3 py-3 border-b border-slate-200">Age</th>
-
-                                 {/* INCOME COLUMNS */}
                                  <th className="px-3 py-3 border-b border-slate-200 bg-blue-50/50 border-l border-blue-100 text-right">Employment</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-blue-50/50 text-right">SS / Pension</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-blue-50 border-r border-blue-100 text-right text-blue-700">Total Income</th>
-
-                                 {/* EXPENSE COLUMNS (Matched to Module Categories) */}
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50/50 border-l border-red-100 text-right">Bills</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50/50 text-right">Mrtg & Impounds</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50/50 text-right">Home</th>
@@ -168,8 +161,6 @@ const CashFlowTable = ({ activeScenario, store }) => {
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50/50 text-right">Other Liab</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50/50 text-right">Extra Exp</th>
                                  <th className="px-3 py-3 border-b border-slate-200 bg-red-50 border-r border-red-100 text-right text-red-700">Total Exp</th>
-
-                                 {/* RESULT COLUMNS */}
                                  <th className="px-3 py-3 border-b border-slate-200 text-right font-bold">Operating Net Flow</th>
                              </tr>
                          </thead>
@@ -184,11 +175,9 @@ const CashFlowTable = ({ activeScenario, store }) => {
                                      <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                                          <td className="px-3 py-2 font-mono font-bold text-slate-600">{row.year}</td>
                                          <td className="px-3 py-2 text-slate-500">{row.age} / {row.andreaAge}</td>
-
                                          <td className="px-3 py-2 text-right text-slate-600 border-l border-slate-100 bg-blue-50/10">${Math.round(bd.income.employment).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 bg-blue-50/10">${Math.round((bd.income.socialSecurity||0) + (bd.income.pension||0)).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right font-bold text-blue-600 border-r border-slate-100 bg-blue-50/20">${Math.round(totalInc).toLocaleString()}</td>
-
                                          <td className="px-3 py-2 text-right text-slate-600 border-l border-slate-100 bg-red-50/10">${Math.round(bd.expenses.bills).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 bg-red-50/10">${Math.round(bd.expenses.impounds).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 bg-red-50/10">${Math.round(bd.expenses.home).toLocaleString()}</td>
@@ -196,7 +185,6 @@ const CashFlowTable = ({ activeScenario, store }) => {
                                          <td className="px-3 py-2 text-right text-slate-600 bg-red-50/10">${Math.round(bd.expenses.otherDebt).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 bg-red-50/10">${Math.round(bd.expenses.extra).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right font-bold text-red-600 border-r border-slate-100 bg-red-50/20">${Math.round(totalExp).toLocaleString()}</td>
-
                                          <td className={`px-3 py-2 text-right font-bold ${netFlow >= 0 ? 'text-green-600' : 'text-red-500'}`}>${Math.round(netFlow).toLocaleString()}</td>
                                      </tr>
                                  );
@@ -214,12 +202,11 @@ const CashFlowTable = ({ activeScenario, store }) => {
 const IncomeEditor = ({ editData, actions, globalStart }) => {
     const workStatusYears = Array.from({ length: 15 }, (_, i) => globalStart.startYear + i);
     const workStatusMap = editData.workStatus || {};
-
-    const andreaBirthYear = editData.andrea.birthYear || 1965;
+    const janeBirthYear = editData.jane.birthYear || 1968;
     const sortedYears = Object.keys(workStatusMap).map(Number).sort((a,b) => a-b);
     let pensionStartYear = null;
-    for (const y of sortedYears) { if (workStatusMap[y]?.andrea === 0) { pensionStartYear = y; break; } }
-    const autoPensionAge = pensionStartYear ? (pensionStartYear - andreaBirthYear) : "N/A";
+    for (const y of sortedYears) { if (workStatusMap[y]?.jane === 0) { pensionStartYear = y; break; } }
+    const autoPensionAge = pensionStartYear ? (pensionStartYear - janeBirthYear) : "N/A";
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
@@ -227,62 +214,62 @@ const IncomeEditor = ({ editData, actions, globalStart }) => {
             <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2">Personal Income Configuration</h3>
                 <div className="grid grid-cols-2 gap-12">
-                    {/* BRIAN */}
+                    {/* DICK */}
                     <div className="space-y-6 border-r border-slate-100 pr-6">
                         <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-blue-600 text-sm uppercase tracking-wider">Brian</h4>
+                            <h4 className="font-bold text-blue-600 text-sm uppercase tracking-wider">Dick</h4>
                             <div className="flex gap-2">
-                                <div className="w-20"><NumberInput label="Birth Year" value={editData.brian.birthYear} onChange={(v) => actions.updateScenarioData('income.brian.birthYear', v)} /></div>
-                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.brian.birthMonth} onChange={(v) => actions.updateScenarioData('income.brian.birthMonth', v)} /></div>
+                                <div className="w-20"><NumberInput label="Birth Year" value={editData.dick.birthYear} onChange={(v) => actions.updateScenarioData('income.dick.birthYear', v)} /></div>
+                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.dick.birthMonth} onChange={(v) => actions.updateScenarioData('income.dick.birthMonth', v)} /></div>
                             </div>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-100">
-                            <NumberInput label="Net Annual Salary" value={editData.brian.netSalary} onChange={(v) => actions.updateScenarioData('income.brian.netSalary', v)} step="1000" />
+                            <NumberInput label="Net Annual Salary" value={editData.dick.netSalary} onChange={(v) => actions.updateScenarioData('income.dick.netSalary', v)} step="1000" />
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Annual Bonus (Net)" value={editData.brian.bonus.amount} onChange={(v) => actions.updateScenarioData('income.brian.bonus.amount', v)} step="1000" />
-                                <MonthSelect label="Payout Month" value={editData.brian.bonus.month} onChange={(v) => actions.updateScenarioData('income.brian.bonus.month', v)} />
+                                <NumberInput label="Annual Bonus (Net)" value={editData.dick.bonus.amount} onChange={(v) => actions.updateScenarioData('income.dick.bonus.amount', v)} step="1000" />
+                                <MonthSelect label="Payout Month" value={editData.dick.bonus.month} onChange={(v) => actions.updateScenarioData('income.dick.bonus.month', v)} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Gross (401k Calc)" value={editData.brian.grossForContrib} onChange={(v) => actions.updateScenarioData('income.brian.grossForContrib', v)} step="1000" />
-                                <NumberInput label="401k Contrib Rate" value={editData.brian.contribPercent} onChange={(v) => actions.updateScenarioData('income.brian.contribPercent', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Gross (401k Calc)" value={editData.dick.grossForContrib} onChange={(v) => actions.updateScenarioData('income.dick.grossForContrib', v)} step="1000" />
+                                <NumberInput label="401k Contrib Rate" value={editData.dick.contribPercent} onChange={(v) => actions.updateScenarioData('income.dick.contribPercent', v)} step="0.01" suffix="dec" />
                             </div>
                         </div>
                         <div className="bg-blue-50/50 p-4 rounded-lg space-y-4 border border-blue-100">
                              <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="FICA Start Age" value={editData.brian.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.brian.socialSecurity.startAge', v)} />
-                                <NumberInput label="FICA Monthly ($)" value={editData.brian.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.brian.socialSecurity.monthlyAmount', v)} step="100" />
+                                <NumberInput label="FICA Start Age" value={editData.dick.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.dick.socialSecurity.startAge', v)} />
+                                <NumberInput label="FICA Monthly ($)" value={editData.dick.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.dick.socialSecurity.monthlyAmount', v)} step="100" />
                             </div>
                         </div>
                     </div>
 
-                    {/* ANDREA */}
+                    {/* JANE */}
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-purple-600 text-sm uppercase tracking-wider">Andrea</h4>
+                            <h4 className="font-bold text-purple-600 text-sm uppercase tracking-wider">Jane</h4>
                             <div className="flex gap-2">
-                                <div className="w-20"><NumberInput label="Birth Year" value={editData.andrea.birthYear} onChange={(v) => actions.updateScenarioData('income.andrea.birthYear', v)} /></div>
-                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.andrea.birthMonth} onChange={(v) => actions.updateScenarioData('income.andrea.birthMonth', v)} /></div>
+                                <div className="w-20"><NumberInput label="Birth Year" value={editData.jane.birthYear} onChange={(v) => actions.updateScenarioData('income.jane.birthYear', v)} /></div>
+                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.jane.birthMonth} onChange={(v) => actions.updateScenarioData('income.jane.birthMonth', v)} /></div>
                             </div>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-100">
-                            <NumberInput label="Net Annual Salary" value={editData.andrea.netSalary} onChange={(v) => actions.updateScenarioData('income.andrea.netSalary', v)} step="1000" />
+                            <NumberInput label="Net Annual Salary" value={editData.jane.netSalary} onChange={(v) => actions.updateScenarioData('income.jane.netSalary', v)} step="1000" />
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Annual Bonus (Net)" value={editData.andrea.bonus.amount} onChange={(v) => actions.updateScenarioData('income.andrea.bonus.amount', v)} step="1000" />
-                                <MonthSelect label="Payout Month" value={editData.andrea.bonus.month} onChange={(v) => actions.updateScenarioData('income.andrea.bonus.month', v)} />
+                                <NumberInput label="Annual Bonus (Net)" value={editData.jane.bonus.amount} onChange={(v) => actions.updateScenarioData('income.jane.bonus.amount', v)} step="1000" />
+                                <MonthSelect label="Payout Month" value={editData.jane.bonus.month} onChange={(v) => actions.updateScenarioData('income.jane.bonus.month', v)} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Gross (401k Calc)" value={editData.andrea.grossForContrib} onChange={(v) => actions.updateScenarioData('income.andrea.grossForContrib', v)} step="1000" />
-                                <NumberInput label="401k Contrib Rate" value={editData.andrea.contribPercent} onChange={(v) => actions.updateScenarioData('income.andrea.contribPercent', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Gross (401k Calc)" value={editData.jane.grossForContrib} onChange={(v) => actions.updateScenarioData('income.jane.grossForContrib', v)} step="1000" />
+                                <NumberInput label="401k Contrib Rate" value={editData.jane.contribPercent} onChange={(v) => actions.updateScenarioData('income.jane.contribPercent', v)} step="0.01" suffix="dec" />
                             </div>
                         </div>
                         <div className="bg-purple-50/50 p-4 rounded-lg space-y-4 border border-purple-100">
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="FICA Start Age" value={editData.andrea.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.andrea.socialSecurity.startAge', v)} />
-                                <NumberInput label="FICA Monthly ($)" value={editData.andrea.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.andrea.socialSecurity.monthlyAmount', v)} step="100" />
+                                <NumberInput label="FICA Start Age" value={editData.jane.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.jane.socialSecurity.startAge', v)} />
+                                <NumberInput label="FICA Monthly ($)" value={editData.jane.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.jane.socialSecurity.monthlyAmount', v)} step="100" />
                             </div>
                             <div className="h-px bg-purple-100 my-2"></div>
                              <div className="flex items-center justify-between"><label className="text-xs font-bold text-purple-500 uppercase">Pension</label><span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">Starts Age: {autoPensionAge}</span></div>
-                             <NumberInput label="Monthly Amount" value={editData.andrea.pension.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.andrea.pension.monthlyAmount', v)} step="100" />
+                             <NumberInput label="Monthly Amount" value={editData.jane.pension.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.jane.pension.monthlyAmount', v)} step="100" />
                         </div>
                     </div>
                 </div>
@@ -293,15 +280,15 @@ const IncomeEditor = ({ editData, actions, globalStart }) => {
                 <h3 className="font-bold text-slate-700 mb-4">Work Status Trajectory (FTE 0.0 - 1.0)</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-2">Year</th><th className="px-4 py-2 text-blue-600">Brian FTE</th><th className="px-4 py-2 text-purple-600">Andrea FTE</th></tr></thead>
+                        <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-2">Year</th><th className="px-4 py-2 text-blue-600">Dick FTE</th><th className="px-4 py-2 text-purple-600">Jane FTE</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                             {workStatusYears.map((year) => {
-                                const status = editData.workStatus?.[year] || { brian: 0, andrea: 0 };
+                                const status = editData.workStatus?.[year] || { dick: 0, jane: 0 };
                                 return (
                                     <tr key={year}>
                                         <td className="px-4 py-2 font-bold text-slate-600">{year}</td>
-                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.brian} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.brian`, parseFloat(e.target.value) || 0)} /></td>
-                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.andrea} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.andrea`, parseFloat(e.target.value) || 0)} /></td>
+                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.dick} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.dick`, parseFloat(e.target.value) || 0)} /></td>
+                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.jane} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.jane`, parseFloat(e.target.value) || 0)} /></td>
                                     </tr>
                                 );
                             })}
@@ -383,6 +370,26 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
     const updateFuture = (id, f, v) => { const list = editData.oneOffs.map(i => i.id === id ? { ...i, [f]: v } : i); actions.updateScenarioData('expenses.oneOffs', list); };
     const removeFuture = (id) => { const list = editData.oneOffs.filter(i => i.id !== id); actions.updateScenarioData('expenses.oneOffs', list); };
 
+    const toggleLoanLink = (loanId) => {
+        let currentLinks = editData.linkedLoanIds;
+        if (!currentLinks) {
+            const allActiveIds = Object.values(activeScenario.data.loans).filter(l => l.active).map(l => l.id);
+            currentLinks = allActiveIds;
+        }
+        let newLinks;
+        if (currentLinks.includes(loanId)) {
+            newLinks = currentLinks.filter(id => id !== loanId);
+        } else {
+            newLinks = [...currentLinks, loanId];
+        }
+        actions.updateScenarioData('expenses.linkedLoanIds', newLinks);
+    };
+
+    const isLoanLinked = (loanId) => {
+        if (!editData.linkedLoanIds) return true;
+        return editData.linkedLoanIds.includes(loanId);
+    };
+
     const retirementBrackets = editData.retirementBrackets || {};
 
     return (
@@ -390,12 +397,60 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
             <Accordion title="Recurring Bills" total={totalBills} defaultOpen={true} onAdd={() => addBill('bills')}>
                 <div className="space-y-1">{editData.bills.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('bills', idx, f, v)} onDelete={() => removeBill('bills', idx)} />))}</div>
             </Accordion>
+
             <Accordion title="Mortgage & Impounds" total={totalMortgageService + totalImpounds} defaultOpen={true} onAdd={() => addBill('impounds')}>
-                <div className="space-y-1">{mortgageLoans.map(loan => (<div key={loan.id} className="flex items-center justify-between p-2 border-b border-slate-50 bg-blue-50/30 rounded mb-1"><div className="flex items-center gap-2"><CreditCard size={14} className="text-blue-500"/><span className="text-sm font-bold text-blue-700">{loan.name}</span></div><span className="font-mono text-sm font-bold text-blue-700">${loan.total.toLocaleString()}</span></div>))}{editData.impounds.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('impounds', idx, f, v)} onDelete={() => removeBill('impounds', idx)} />))}</div>
+                <div className="space-y-1">
+                    {mortgageLoans.map(loan => {
+                        const linked = isLoanLinked(loan.id);
+                        return (
+                            <div key={loan.id} className={`flex items-center gap-3 p-2 border-b border-slate-50 rounded mb-1 transition-colors ${linked ? 'bg-blue-50/50' : 'opacity-60 bg-slate-50'}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={linked}
+                                    onChange={() => toggleLoanLink(loan.id)}
+                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                                />
+                                <div className="flex-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard size={14} className={linked ? "text-blue-500" : "text-slate-400"}/>
+                                        <span className={`text-sm font-bold ${linked ? 'text-blue-700' : 'text-slate-500'}`}>{loan.name}</span>
+                                    </div>
+                                    <span className={`font-mono text-sm font-bold ${linked ? 'text-blue-700' : 'text-slate-400'}`}>
+                                        ${loan.total.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {editData.impounds.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('impounds', idx, f, v)} onDelete={() => removeBill('impounds', idx)} />))}
+                </div>
             </Accordion>
+
             <Accordion title="Home Expenses" total={totalHome} defaultOpen={false} onAdd={() => addBill('home')}><div className="space-y-1">{editData.home.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('home', idx, f, v)} onDelete={() => removeBill('home', idx)} />))}</div></Accordion>
             <Accordion title="Living Expenses" total={totalLiving} defaultOpen={false} onAdd={() => addBill('living')}><div className="space-y-1">{editData.living.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('living', idx, f, v)} onDelete={() => removeBill('living', idx)} />))}</div></Accordion>
-            <Accordion title="Other Liabilities" total={totalDebtService} defaultOpen={false}><div className="space-y-0.5">{otherLoans.length === 0 && <div className="text-sm text-slate-400 italic p-2">No other active loans found.</div>}{otherLoans.map(loan => (<div key={loan.id} className="py-2 px-2 border-b border-slate-50 hover:bg-slate-50 rounded flex justify-between items-center"><span className="text-sm font-bold text-slate-700">{loan.name}</span><span className="font-mono text-sm font-bold text-slate-700">${loan.total.toLocaleString()}</span></div>))}</div></Accordion>
+
+            <Accordion title="Other Liabilities" total={totalDebtService} defaultOpen={false}>
+                <div className="space-y-0.5">
+                    {otherLoans.length === 0 && <div className="text-sm text-slate-400 italic p-2">No other active loans found.</div>}
+                    {otherLoans.map(loan => {
+                        const linked = isLoanLinked(loan.id);
+                        return (
+                            <div key={loan.id} className={`flex items-center gap-3 py-2 px-2 border-b border-slate-50 rounded transition-colors ${linked ? 'hover:bg-slate-50' : 'opacity-60'}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={linked}
+                                    onChange={() => toggleLoanLink(loan.id)}
+                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                                />
+                                <div className="flex-1 flex items-center justify-between">
+                                    <span className={`text-sm font-bold ${linked ? 'text-slate-700' : 'text-slate-500'}`}>{loan.name}</span>
+                                    <span className={`font-mono text-sm font-bold ${linked ? 'text-slate-700' : 'text-slate-400'}`}>${loan.total.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </Accordion>
 
             <Accordion title="Extra Expense Planning" total={totalOneOffsThisMonth} defaultOpen={false}>
                 <FutureExpensesModule
@@ -414,24 +469,73 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
 
 // --- PROFILE MANAGER ---
 
-const ProfileMenu = ({ type, activeProfileName, onSave, onSaveAs, onToggleMgr, showMgr }) => {
+const ProfileMenu = ({ type, availableProfiles, editingProfileId, isDirty, onSwitchProfile, onSave, onSaveAs, onUpdateDescription, onToggleMgr, showMgr }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const editingProfile = availableProfiles.find(p => p.id === editingProfileId);
+    const editingName = editingProfile?.name || "Unsaved Draft";
+    const description = editingProfile?.description || "";
+
     return (
-        <div className="relative">
-            <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all shadow-sm">
-                <Settings size={14} /> <span>{type === 'income' ? 'Income Profiles' : 'Expense Profiles'}</span> <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
-            </button>
-            {isOpen && (
-                <>
-                    <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)}></div>
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-30 overflow-hidden">
-                         <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active: {activeProfileName}</div>
-                         <button onClick={() => { onSave(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Save size={16} className="text-blue-600"/> Save Changes</button>
-                         <button onClick={() => { onSaveAs(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Copy size={16} className="text-slate-500"/> Save as New...</button>
-                         <div className="h-px bg-slate-100 my-1"></div>
-                         <button onClick={() => { onToggleMgr(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Calendar size={16} className={showMgr ? "text-blue-600" : "text-slate-500"}/> {showMgr ? "Hide Timeline" : "Manage Timeline"}</button>
-                    </div>
-                </>
+        <div className="flex items-center gap-2">
+            <div className="relative">
+                <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all shadow-sm">
+                    <Settings size={14} />
+                    <span className="max-w-[120px] truncate">{editingName}</span>
+                    <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
+                </button>
+                {isOpen && (
+                    <>
+                        <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)}></div>
+                        <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 rounded-lg shadow-xl z-30 overflow-hidden">
+                             {/* DESCRIPTION BLOCK */}
+                             {editingProfileId && (
+                                 <div className="p-3 bg-slate-50 border-b border-slate-100">
+                                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Description</label>
+                                     <textarea
+                                        className="w-full text-xs text-slate-600 bg-white border border-slate-200 rounded p-2 focus:border-blue-400 outline-none resize-none h-16"
+                                        placeholder="Describe this profile..."
+                                        value={description}
+                                        onChange={(e) => onUpdateDescription(editingProfileId, e.target.value)}
+                                     />
+                                 </div>
+                             )}
+
+                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Load / Edit Profile</div>
+                             <div className="max-h-48 overflow-y-auto">
+                                {availableProfiles.length === 0 && <div className="px-4 py-2 text-xs text-slate-400 italic">No saved profiles.</div>}
+                                {availableProfiles.map(p => (
+                                    <button key={p.id} onClick={() => { onSwitchProfile(p.id); setIsOpen(false); }} className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-slate-50 ${p.id === editingProfileId ? 'text-blue-700 font-bold bg-blue-50/50' : 'text-slate-600'}`}>
+                                        <span className="truncate">{p.name}</span>
+                                        {p.id === editingProfileId && <CheckSquare size={14}/>}
+                                    </button>
+                                ))}
+                             </div>
+
+                             <div className="h-px bg-slate-100 my-1"></div>
+                             <button onClick={() => { onSaveAs(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Copy size={16} className="text-slate-500"/> Save as New Profile...</button>
+                             <button onClick={() => { onToggleMgr(); setIsOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Calendar size={16} className={showMgr ? "text-blue-600" : "text-slate-500"}/> {showMgr ? "Hide Timeline" : "Manage Timeline"}</button>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* SYNC INDICATOR & SAVE ACTION */}
+            {editingProfileId && (
+                <div className="flex items-center">
+                     {isDirty ? (
+                         <button
+                             onClick={onSave}
+                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wider hover:bg-amber-200 transition-colors shadow-sm animate-in fade-in"
+                             title="Local changes are not saved to master profile"
+                         >
+                            <AlertCircle size={12}/> Unsaved Changes
+                         </button>
+                     ) : (
+                         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100 shadow-sm" title="Synced with master profile">
+                            <CheckCircle size={12}/> Synced
+                         </div>
+                     )}
+                </div>
             )}
         </div>
     );
@@ -479,6 +583,9 @@ export default function CashFlow() {
   const [activeTab, setActiveTab] = useState('expenses'); // 'income' | 'expenses'
   const [showProfileMgr, setShowProfileMgr] = useState(false);
 
+  // State to track which profile ID is currently "Loaded" in the editor
+  const [editingProfileId, setEditingProfileId] = useState(null);
+
   // Data Loading
   const incomeData = activeScenario.data.income;
   const expenseData = activeScenario.data.expenses;
@@ -491,18 +598,40 @@ export default function CashFlow() {
   const globalStart = assumptions.timing || { startYear: 2026, startMonth: 1 };
   const globalStartDateStr = `${globalStart.startYear}-${String(globalStart.startMonth).padStart(2, '0')}-01`;
 
-  const getActiveProfile = (type) => {
-      const seq = activeScenario.data[type].profileSequence || [];
+  // Determine which profile is *Active in the Timeline* for the current date
+  const timelineActiveProfile = useMemo(() => {
+      const seq = activeScenario.data[activeTab].profileSequence || [];
       const activeItems = seq.filter(item => item.isActive && !isAfter(parseISO(item.startDate), simulationDate));
       if (activeItems.length === 0) return null;
       activeItems.sort((a, b) => b.startDate.localeCompare(a.startDate));
       const effectiveItem = activeItems[0];
-      const profile = store.profiles[effectiveItem.profileId];
-      return profile ? { ...profile, ...effectiveItem } : null;
-  };
+      return store.profiles[effectiveItem.profileId] ? { ...store.profiles[effectiveItem.profileId], ...effectiveItem } : null;
+  }, [activeScenario, activeTab, simulationDate, store.profiles]);
 
-  const activeIncomeProfile = getActiveProfile('income');
-  const activeExpenseProfile = getActiveProfile('expenses');
+  // Sync editingProfileId to timeline active profile IF user hasn't manually switched (or on first load)
+  useEffect(() => {
+      if (timelineActiveProfile && editingProfileId === null) {
+          setEditingProfileId(timelineActiveProfile.id);
+      }
+  }, [timelineActiveProfile]);
+
+  // Also reset editing ID when tab changes to avoid carrying over state
+  useEffect(() => { setEditingProfileId(null); }, [activeTab]);
+
+  // --- DIRTY CHECKING LOGIC ---
+  const isDirty = useMemo(() => {
+      if (!editingProfileId) return false;
+      const masterProfile = store.profiles[editingProfileId];
+      if (!masterProfile) return false;
+
+      // Extract current editor state, stripping out 'profileSequence' which belongs to Scenario
+      const currentEditorState = activeTab === 'income' ? incomeData : expenseData;
+      const { profileSequence, ...cleanEditorState } = currentEditorState;
+
+      // Compare with Master Profile Data
+      return !isEqual(cleanEditorState, masterProfile.data);
+  }, [editingProfileId, store.profiles, activeTab, incomeData, expenseData]);
+
 
   // Load Loans for Payment Calculation for the Editor
   const currentMonthKey = format(simulationDate, 'yyyy-MM');
@@ -535,23 +664,69 @@ export default function CashFlow() {
   const totalHome = calculateTotal(expenseData.home);
   const totalLiving = calculateTotal(expenseData.living);
   const totalImpounds = calculateTotal(expenseData.impounds);
-  const totalMortgageService = mortgageLoans.reduce((sum, item) => sum + item.total, 0);
-  const totalDebtService = otherLoans.reduce((sum, item) => sum + item.total, 0);
+
+  const getLinkedTotal = (loans) => {
+      const links = expenseData.linkedLoanIds;
+      // Default to ALL if undefined
+      if (!links) return loans.reduce((s,i) => s+i.total, 0);
+      return loans.filter(l => links.includes(l.id)).reduce((s,i) => s+i.total, 0);
+  };
+
+  const totalMortgageService = getLinkedTotal(mortgageLoans);
+  const totalDebtService = getLinkedTotal(otherLoans);
+
   const totalOneOffsThisMonth = expenseData.oneOffs.filter(item => item.date === currentMonthKey).reduce((sum, item) => sum + item.amount, 0);
   const monthlyBurn = totalBills + totalHome + totalLiving + totalImpounds + totalMortgageService + totalDebtService;
 
-  const handleSaveProfile = () => {
-      const type = activeTab;
-      const activeProf = type === 'income' ? activeIncomeProfile : activeExpenseProfile;
-      const data = type === 'income' ? incomeData : expenseData;
-      if (activeProf && confirm(`Overwrite "${activeProf.name}" with current ${type} settings?`)) {
-          actions.updateProfile(activeProf.profileId, data);
+  // --- ACTIONS ---
+
+  const saveToMaster = () => {
+      if (editingProfileId) {
+          const currentData = activeTab === 'income' ? incomeData : expenseData;
+          const { profileSequence, ...cleanData } = currentData;
+          actions.updateProfile(editingProfileId, cleanData);
       }
   };
+
+  const handleUpdateDescription = (profileId, newDesc) => {
+      // We need to update the description property on the profile object, NOT in the 'data' block
+      // This requires a new action or manual update logic
+      // Assuming 'updateProfile' only updates 'data', we need to check DataContext
+      // Looking at DataContext: updateProfile updates .data.
+      // I need to add an action to update metadata like description.
+      // But I can cheat by updating the whole object if store structure allows, or add a specific action.
+      // Let's assume I need to add 'updateProfileMeta' to DataContext later.
+      // For now, I'll direct update via existing mechanisms if possible or add logic.
+      // Actually, I'll add 'updateProfileMeta' to DataContext in step 7.
+      actions.updateProfileMeta(profileId, { description: newDesc });
+  };
+
+  const handleSwitchProfile = (newId) => {
+      if (isDirty) {
+          saveToMaster();
+      }
+
+      // Load New Data
+      const targetProfile = store.profiles[newId];
+      if (targetProfile) {
+          const mergedData = {
+              ...targetProfile.data,
+              profileSequence: activeScenario.data[activeTab].profileSequence
+          };
+          actions.updateScenarioData(activeTab, mergedData);
+          setEditingProfileId(newId);
+      }
+  };
+
   const handleSaveAs = () => {
       const name = prompt(`Name for new ${activeTab} profile:`);
-      if(name) actions.saveProfile(activeTab, name, activeTab === 'income' ? incomeData : expenseData);
+      if(name) {
+          actions.saveProfile(activeTab, name, activeTab === 'income' ? incomeData : expenseData);
+      }
   };
+
+  // Available profiles for the menu
+  const availableProfiles = Object.values(store.profiles).filter(p => p.type === activeTab);
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
@@ -571,14 +746,26 @@ export default function CashFlow() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-             <ProfileMenu
-                type={activeTab}
-                activeProfileName={activeTab === 'income' ? (activeIncomeProfile?.name || "None") : (activeExpenseProfile?.name || "None")}
-                onSave={handleSaveProfile}
-                onSaveAs={handleSaveAs}
-                onToggleMgr={() => setShowProfileMgr(!showProfileMgr)}
-                showMgr={showProfileMgr}
-             />
+             <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Editing:</span>
+                <ProfileMenu
+                    type={activeTab}
+                    availableProfiles={availableProfiles}
+                    editingProfileId={editingProfileId}
+                    isDirty={isDirty}
+                    onSwitchProfile={handleSwitchProfile}
+                    onSave={saveToMaster}
+                    onSaveAs={handleSaveAs}
+                    onUpdateDescription={handleUpdateDescription}
+                    onToggleMgr={() => setShowProfileMgr(!showProfileMgr)}
+                    showMgr={showProfileMgr}
+                />
+             </div>
+             {editingProfileId && editingProfileId !== timelineActiveProfile?.id && (
+                 <div className="text-[10px] text-orange-500 bg-orange-50 px-2 py-1 rounded border border-orange-100 flex items-center gap-1">
+                    <Info size={10}/> Not active in timeline for {format(simulationDate, 'MMM yyyy')}
+                 </div>
+             )}
           </div>
         </div>
         {showProfileMgr && (

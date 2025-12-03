@@ -4,19 +4,19 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Committing 1.1 of the application">
-      <change afterPath="$PROJECT_DIR$/src/views/cashflow.jsx" afterDir="false" />
+    <list default="true" id="67b27044-abfd-4de8-98b9-2dadd6d28160" name="Changes" comment="Committing 1.2 of the application">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/work_context.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/sidebar.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ba_financial_analysis__architecture.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ba_financial_analysis__architecture.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/ba_financial_analysis_requirements_specification.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/work_context.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/context/DataContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/context/DataContext.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data/application_data.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/application_data.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils/ai_export_utils.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/ai_export_utils.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/utils/asset_math.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/asset_math.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/utils/financial_engine.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/financial_engine.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/views/assumptions.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/assumptions.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/expenses.jsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/views/income.jsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/cashflow.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/cashflow.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/views/dashboard.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/views/dashboard.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -230,7 +230,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764563312936</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="Committing 1.2 of the application">
+      <option name="closed" value="true" />
+      <created>1764622359816</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1764622359816</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -255,6 +263,7 @@
     <MESSAGE value="Committing v0.9 of the architecture" />
     <MESSAGE value="Committing 1.0 of the application" />
     <MESSAGE value="Committing 1.1 of the application" />
-    <option name="LAST_COMMIT_MESSAGE" value="Committing 1.1 of the application" />
+    <MESSAGE value="Committing 1.2 of the application" />
+    <option name="LAST_COMMIT_MESSAGE" value="Committing 1.2 of the application" />
   </component>
 </project>
