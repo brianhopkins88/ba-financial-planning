@@ -1,0 +1,183 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "activeScenarioId": "scen_default"
+  },
+  "scenarios": {
+    "scen_default": {
+      "id": "scen_default",
+      "name": "Base Plan: Dick & Jane",
+      "description": "Baseline scenario for Dick and Jane (Age 58), retiring at 67 with a mix of joint and retirement assets.",
+      "created": "2025-12-01T12:00:00Z",
+      "lastUpdated": "2025-12-02T08:00:00Z",
+      "data": {
+        "assumptions": {
+          "inflation": { "general": 0.03, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025, "propertyInsurance": 0.04 },
+          "market": { "initial": 0.07, "terminal": 0.04, "taperEndAge": 85 },
+          "rates": { "reverseMortgage": 0.07 },
+          "property": {
+            "baselineGrowth": 0.03,
+            "newHomeAddon": 0.01,
+            "midHomeAddon": 0.005,
+            "matureHomeAddon": 0.00,
+            "newHomeYears": 5,
+            "midHomeYears": 15,
+            "maxGrowth": 0.05
+          },
+          "taxTiers": { "bothFull": 0.28, "onePart": 0.22, "bothPart": 0.18, "retired": 0.15 },
+          "thresholds": { "cashMin": 20000, "cashMax": 50000, "jointMin": 0, "retirementMin": 250000 },
+          "timing": { "startYear": 2026, "startMonth": 1 },
+          "currentModelDate": "2026-01-01"
+        },
+        "income": {
+          "dick": {
+              "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
+              "bonus": { "amount": 15000, "month": 3 },
+              "birthYear": 1968,
+              "birthMonth": 6,
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
+          },
+          "jane": {
+              "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
+              "bonus": { "amount": 12000, "month": 12 },
+              "birthYear": 1968,
+              "birthMonth": 8,
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3100 },
+                "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
+          },
+          "workStatus": {
+            "2026": { "dick": 1.0, "jane": 1.0 },
+            "2027": { "dick": 1.0, "jane": 1.0 },
+            "2028": { "dick": 1.0, "jane": 1.0 },
+            "2029": { "dick": 1.0, "jane": 1.0 },
+            "2030": { "dick": 1.0, "jane": 1.0 },
+            "2031": { "dick": 1.0, "jane": 1.0 },
+            "2032": { "dick": 1.0, "jane": 1.0 },
+            "2033": { "dick": 0.5, "jane": 0.5 },
+            "2034": { "dick": 0.0, "jane": 0.0 },
+            "2035": { "dick": 0.0, "jane": 0.0 }
+          },
+          "profileSequence": [
+             { "profileId": "prof_income_base", "startDate": "2026-01-01", "isActive": true }
+          ]
+        },
+        "expenses": {
+          "bills": [
+            { "id": "b1", "name": "Fiber Internet", "amount": 85 },
+            { "id": "b2", "name": "Streaming Bundle", "amount": 65 },
+            { "id": "b4", "name": "Mobile Plan", "amount": 140 },
+            { "id": "b6", "name": "Gym & Clubs", "amount": 180 },
+            { "id": "h6", "name": "Utilities (Avg)", "amount": 250 },
+            { "id": "b3", "name": "Auto Insurance", "amount": 210 }
+          ],
+          "home": [
+            { "id": "h3", "name": "HOA Fees", "amount": 350 },
+            { "id": "h9", "name": "Maintenance Fund", "amount": 400 }
+          ],
+          "living": [
+            { "id": "l1", "name": "Groceries & Dining", "amount": 1800 },
+            { "id": "l2", "name": "Fuel & Transport", "amount": 400 }
+          ],
+          "impounds": [
+            { "id": "h1", "name": "Property Tax", "amount": 850 },
+            { "id": "h2", "name": "Home Insurance", "amount": 220 }
+          ],
+          "oneOffs": [],
+          "retirementBrackets": { "65": 15000, "70": 20000, "75": 15000, "80": 10000 },
+          "linkedLoanIds": [],
+          "profileSequence": [
+             { "profileId": "prof_expenses_base", "startDate": "2026-01-01", "isActive": true }
+          ]
+        },
+        "assets": {
+          "accounts": {
+            "acct_joint_1": { "id": "acct_joint_1", "type": "joint", "name": "Brokerage Account", "balance": 150000, "active": true },
+            "acct_ira_dick": {
+                "id": "acct_ira_dick",
+                "type": "inherited",
+                "name": "Inherited IRA (Dick)",
+                "balance": 120000,
+                "active": true,
+                "inputs": {
+                    "startDate": "2024-06-01",
+                    "withdrawalSchedule": {}
+                }
+            },
+            "acct_401k_dick": { "id": "acct_401k_dick", "type": "retirement", "name": "Dick 401k", "balance": 650000, "active": true },
+            "acct_401k_jane": { "id": "acct_401k_jane", "type": "retirement", "name": "Jane 403b", "balance": 580000, "active": true },
+            "acct_cash_1": { "id": "acct_cash_1", "type": "cash", "name": "HYSA Savings", "balance": 45000, "active": true },
+            "acct_prop_1": { "id": "acct_prop_1", "type": "property", "name": "Primary Residence", "balance": 850000, "active": true, "inputs": { "buildYear": 2005, "zipCode": "90210", "locationFactor": 0.01 } }
+          }
+        },
+        "loans": {
+           "mortgage_1": {
+              "id": "mortgage_1", "name": "Primary Mortgage", "type": "mortgage", "active": true,
+              "inputs": { "principal": 320000, "rate": 0.035, "payment": 1850, "startDate": "2015-05-01", "termMonths": 360 }
+           },
+           "car_loan_1": {
+              "id": "car_loan_1", "name": "Dick's SUV", "type": "fixed", "active": true,
+              "inputs": { "principal": 15000, "rate": 0.045, "payment": 450, "startDate": "2023-01-01", "termMonths": 48 }
+           }
+        }
+      }
+    }
+  },
+  "profiles": {
+    "prof_expenses_base": {
+      "id": "prof_expenses_base", "name": "Baseline Expenses", "type": "expenses", "description": "Standard living expenses for current home.",
+      "data": {
+        "bills": [
+            { "id": "b1", "name": "Fiber Internet", "amount": 85 },
+            { "id": "b2", "name": "Streaming Bundle", "amount": 65 },
+            { "id": "b4", "name": "Mobile Plan", "amount": 140 },
+            { "id": "b6", "name": "Gym & Clubs", "amount": 180 },
+            { "id": "h6", "name": "Utilities (Avg)", "amount": 250 },
+            { "id": "b3", "name": "Auto Insurance", "amount": 210 }
+        ],
+        "home": [
+            { "id": "h3", "name": "HOA Fees", "amount": 350 },
+            { "id": "h9", "name": "Maintenance Fund", "amount": 400 }
+        ],
+        "living": [
+            { "id": "l1", "name": "Groceries & Dining", "amount": 1800 },
+            { "id": "l2", "name": "Fuel & Transport", "amount": 400 }
+        ],
+        "impounds": [
+            { "id": "h1", "name": "Property Tax", "amount": 850 },
+            { "id": "h2", "name": "Home Insurance", "amount": 220 }
+        ],
+        "linkedLoanIds": ["mortgage_1", "car_loan_1"]
+      }
+    },
+    "prof_income_base": {
+        "id": "prof_income_base", "name": "Working Income", "type": "income", "description": "Full employment income for both.",
+        "data": {
+            "dick": {
+                "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
+                "bonus": { "amount": 15000, "month": 3 },
+                "birthYear": 1968, "birthMonth": 6,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
+            },
+            "jane": {
+                "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
+                "bonus": { "amount": 12000, "month": 12 },
+                "birthYear": 1968, "birthMonth": 8,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3100 },
+                "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
+            },
+            "workStatus": {
+                "2026": { "dick": 1.0, "jane": 1.0 },
+                "2027": { "dick": 1.0, "jane": 1.0 },
+                "2028": { "dick": 1.0, "jane": 1.0 },
+                "2029": { "dick": 1.0, "jane": 1.0 },
+                "2030": { "dick": 1.0, "jane": 1.0 },
+                "2031": { "dick": 1.0, "jane": 1.0 },
+                "2032": { "dick": 1.0, "jane": 1.0 },
+                "2033": { "dick": 0.5, "jane": 0.5 },
+                "2034": { "dick": 0.0, "jane": 0.0 },
+                "2035": { "dick": 0.0, "jane": 0.0 }
+            }
+        }
+    }
+  }
+}
