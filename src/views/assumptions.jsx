@@ -61,12 +61,25 @@ export default function Assumptions() {
       if(name) { actions.createScenario(name); alert(`Created: ${name}`); }
   };
 
+  const handleDescriptionChange = (e) => {
+      actions.updateScenarioMeta('description', e.target.value);
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
+      <header className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
+        <div className="flex-1">
           <h2 className="text-2xl font-bold text-slate-800">Model Assumptions</h2>
           <p className="text-slate-500 text-sm mt-1">Editing Scenario: <span className="font-semibold text-blue-600">{activeScenario.name}</span></p>
+          <div className="mt-4">
+              <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Scenario Description</label>
+              <textarea
+                  className="w-full border border-slate-200 rounded p-2 text-sm text-slate-600 focus:border-blue-400 outline-none resize-none h-16 bg-white"
+                  placeholder="Describe the goals of this scenario..."
+                  value={activeScenario.description || ''}
+                  onChange={handleDescriptionChange}
+              />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleClone} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 rounded hover:bg-slate-50 text-sm font-medium border border-slate-300 shadow-sm transition-colors">
@@ -109,7 +122,7 @@ export default function Assumptions() {
             <Info size={16} className="flex-shrink-0 mt-0.5"/>
             <span>
                 <strong>How it works:</strong> Home values grow annually by the <strong>Baseline Growth</strong> plus an Age-Based Add-on.
-                Set Baseline > 0 to see any appreciation.
+                Set Baseline &gt; 0 to see any appreciation.
             </span>
          </div>
          <NumberInput label="Macro Baseline Growth" value={assumptions.property.baselineGrowth} path="assumptions.property.baselineGrowth" step="0.001" suffix="dec"
@@ -133,22 +146,22 @@ export default function Assumptions() {
             helpText="Years a home stays in the 'Mid' pricing tier." />
       </Section>
 
-      {/* 3. INCOME & WORK */}
+      {/* 3. INCOME & CONTRIBUTIONS */}
       <Section title="3. Income & Contributions">
-        <NumberInput label="Brian: Net Annual Salary" value={data.income.brian.netSalary} path="income.brian.netSalary" step="1000"
+        <NumberInput label="Dick: Net Annual Salary" value={data.income.dick.netSalary} path="income.dick.netSalary" step="1000"
             helpText="Take-home pay used for monthly cash flow." />
-        <NumberInput label="Brian: Gross (401k Calc)" value={data.income.brian.grossForContrib} path="income.brian.grossForContrib" step="1000"
+        <NumberInput label="Dick: Gross (401k Calc)" value={data.income.dick.grossForContrib} path="income.dick.grossForContrib" step="1000"
             helpText="Pre-tax amount used ONLY to calc 401k contributions." />
-        <NumberInput label="Brian: 401k Contrib Rate" value={data.income.brian.contribPercent} path="income.brian.contribPercent" step="0.01" suffix="dec"
+        <NumberInput label="Dick: 401k Contrib Rate" value={data.income.dick.contribPercent} path="income.dick.contribPercent" step="0.01" suffix="dec"
             helpText="% of Gross saved to retirement." />
 
         <div className="col-span-full h-px bg-slate-100 my-2"></div>
 
-        <NumberInput label="Andrea: Net Annual Salary" value={data.income.andrea.netSalary} path="income.andrea.netSalary" step="1000"
+        <NumberInput label="Jane: Net Annual Salary" value={data.income.jane.netSalary} path="income.jane.netSalary" step="1000"
             helpText="Take-home pay used for monthly cash flow." />
-        <NumberInput label="Andrea: Gross (401k Calc)" value={data.income.andrea.grossForContrib} path="income.andrea.grossForContrib" step="1000"
+        <NumberInput label="Jane: Gross (401k Calc)" value={data.income.jane.grossForContrib} path="income.jane.grossForContrib" step="1000"
             helpText="Pre-tax amount used ONLY to calc 401k contributions." />
-        <NumberInput label="Andrea: 401k Contrib Rate" value={data.income.andrea.contribPercent} path="income.andrea.contribPercent" step="0.01" suffix="dec"
+        <NumberInput label="Jane: 401k Contrib Rate" value={data.income.jane.contribPercent} path="income.jane.contribPercent" step="0.01" suffix="dec"
             helpText="% of Gross saved to retirement." />
       </Section>
 

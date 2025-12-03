@@ -17,7 +17,7 @@ const PARAMETER_DESCRIPTIONS = {
     "assumptions.market.initial": "Target investment return rate during the accumulation phase (pre-retirement).",
     "assumptions.market.terminal": "Target investment return rate during the preservation phase (late retirement).",
     "assumptions.property.baselineGrowth": "Base annual appreciation rate for real estate assets.",
-    "income.brian.netSalary": "Annual take-home pay used for cash flow modeling.",
+    "income.dick.netSalary": "Annual take-home pay used for cash flow modeling.",
     "expenses.living": "Discretionary living expenses (food, entertainment, travel) excluding fixed bills.",
     "loans.mortgage": "Primary mortgage details. Principal reduction increases Net Worth; Interest is a sunk cost."
 };

@@ -1,9 +1,7 @@
 # BA Financial Analysis Application – Architecture Specification (v1.2)
 
 **Date:** December 1st, 2025
-**Version:** 1.2 (Strict Monthly Engine & Consolidated Cash Flow)
-
----
+**Version:** 1.3 
 
 ## 1. Executive Summary
 
@@ -41,6 +39,10 @@ This document describes the end‑to‑end architecture for the **BA Financial A
 - **Income Profile:** Added `birthMonth` (1-12) to person objects for precise first-year proration.
 - **RMD Handling:** RMD schedules are now inputs on the `asset` object (Inherited IRA), not global income streams.
 
+### 3.2 Schema Updates (v1.3)
+* **Meta Fields:** Added `description` string to both `Scenario` and `Profile` root objects.
+* **Expense Profile:** Added `linkedLoanIds` (array of strings) to filter active debt service payments.
+* **Storage Strategy:** Implemented explicit versioning in the `STORAGE_KEY` (e.g., `ba_financial_planner_v1.2_dick_jane`) to force cache invalidation when the data model changes significantly.
 ---
 
 ## 4. Application Architecture
@@ -79,6 +81,11 @@ This document describes the end‑to‑end architecture for the **BA Financial A
 - `events`: Log of critical state changes (Retirement, Insolvency, Forced Sale).
 
 ### 4.3 Component Interaction
+* **Data Context:** Added specific actions for metadata management:
+    * `updateScenarioMeta(key, value)`
+    * `updateProfileMeta(id, metaObject)`
+* **Financial Engine:**
+    * **Debt Filter:** The monthly loop now checks `expenseProfile.linkedLoanIds`. If defined, it only processes payments for matched loans. (Defaults to "All Active" if undefined).
 
 ```
 flowchart LR

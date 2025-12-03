@@ -5,7 +5,8 @@ import { format, parseISO, isValid } from 'date-fns';
 
 const DataContext = createContext();
 
-const STORAGE_KEY = 'ba_financial_planner_v1.1';
+// UPDATED KEY: This invalidates the old "Brian/Andrea" data and forces "Dick/Jane" to load
+const STORAGE_KEY = 'ba_financial_planner_v1.2_dick_jane';
 
 export const DataProvider = ({ children }) => {
 
@@ -66,16 +67,10 @@ export const DataProvider = ({ children }) => {
 
       ['income', 'expenses'].forEach(type => {
           if (!scenario.data[type].profileSequence) scenario.data[type].profileSequence = [];
-          // If empty, look for a default profile or create a placeholder logic
           if (scenario.data[type].profileSequence.length === 0) {
-              // We can't auto-create a profile object here easily without an ID, but we can ensure the array exists.
-              // Ideally, the "Initial Import" should have set this up.
+              // ...
           } else {
-              // If there is a base profile (earliest), ensure it matches the Scenario Start Date
               scenario.data[type].profileSequence.sort((a,b) => a.startDate.localeCompare(b.startDate));
-              // Force the first one to align with scenario start?
-              // User requirement: "default expense profile should have a start date that is the scenario start date"
-              // We'll trust the user to set it via UI, but ensuring the array exists is key.
           }
       });
       return scenario;
@@ -91,6 +86,14 @@ export const DataProvider = ({ children }) => {
       newData.scenarios[activeId].lastUpdated = new Date().toISOString();
       return newData;
     });
+  };
+
+  const updateScenarioMeta = (key, value) => {
+      setStore(prev => {
+          const newData = cloneDeep(prev);
+          newData.scenarios[activeId][key] = value;
+          return newData;
+      });
   };
 
   const updateScenarioDate = (y, m) => {
@@ -250,6 +253,7 @@ export const DataProvider = ({ children }) => {
   });
 
   const updateProfile = (pid, d) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].data = cloneDeep(d); return c; });
+  const updateProfileMeta = (pid, meta) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) { Object.assign(c.profiles[pid], meta); } return c; });
   const renameProfile = (pid, n) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].name = n; return c; });
   const deleteProfile = (pid) => setStore(p => { const c = cloneDeep(p); delete c.profiles[pid]; return c; });
   const toggleProfileInScenario = (t, pid, act, date) => setStore(p => {
@@ -265,11 +269,11 @@ export const DataProvider = ({ children }) => {
     <DataContext.Provider value={{
       store, activeScenario, simulationDate, isLoaded,
       actions: {
-        switchScenario, createScenario, createBlankScenario, renameScenario, deleteScenario,
+        switchScenario, createScenario, createBlankScenario, renameScenario, deleteScenario, updateScenarioMeta,
         updateScenarioData, updateScenarioDate, setSimulationMonth, saveAll,
         resetActiveScenario, addAsset, deleteAsset, addLoan, deleteLoan, batchUpdateLoanPayments,
         addLoanStrategy, renameLoanStrategy, duplicateLoanStrategy, deleteLoanStrategy,
-        importData, saveProfile, updateProfile, renameProfile, deleteProfile, toggleProfileInScenario
+        importData, saveProfile, updateProfile, updateProfileMeta, renameProfile, deleteProfile, toggleProfileInScenario
       }
     }}>
       {children}

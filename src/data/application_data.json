@@ -1,197 +1,181 @@
 {
   "meta": {
-    "version": "0.99.3",
+    "version": "1.0.0",
     "activeScenarioId": "scen_default"
   },
   "scenarios": {
     "scen_default": {
       "id": "scen_default",
-      "name": "Base Plan: Current Home",
-      "created": "2025-11-23T06:00:00Z",
-      "lastUpdated": "2025-11-30T16:00:00Z",
+      "name": "Base Plan: Dick & Jane",
+      "description": "Baseline scenario for Dick and Jane (Age 58), retiring at 67 with a mix of joint and retirement assets.",
+      "created": "2025-12-01T12:00:00Z",
+      "lastUpdated": "2025-12-02T08:00:00Z",
       "data": {
         "assumptions": {
-          "inflation": { "general": 0.025, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025, "propertyInsurance": 0.05 },
-          "market": { "initial": 0.07, "terminal": 0.035, "taperEndAge": 85 },
-          "rates": { "reverseMortgage": 0.065 },
+          "inflation": { "general": 0.03, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025, "propertyInsurance": 0.04 },
+          "market": { "initial": 0.07, "terminal": 0.04, "taperEndAge": 85 },
+          "rates": { "reverseMortgage": 0.07 },
           "property": {
-            "baselineGrowth": 0.02,
-            "newHomeAddon": 0.015,
-            "midHomeAddon": 0.007,
+            "baselineGrowth": 0.03,
+            "newHomeAddon": 0.01,
+            "midHomeAddon": 0.005,
             "matureHomeAddon": 0.00,
             "newHomeYears": 5,
             "midHomeYears": 15,
-            "maxGrowth": 0.04
+            "maxGrowth": 0.05
           },
-          "taxTiers": { "bothFull": 0.32, "onePart": 0.27, "bothPart": 0.25, "retired": 0.20 },
-          "thresholds": { "cashMin": 15000, "cashMax": 30000, "jointMin": 0, "retirementMin": 300000 },
+          "taxTiers": { "bothFull": 0.28, "onePart": 0.22, "bothPart": 0.18, "retired": 0.15 },
+          "thresholds": { "cashMin": 20000, "cashMax": 50000, "jointMin": 0, "retirementMin": 250000 },
           "timing": { "startYear": 2026, "startMonth": 1 },
           "currentModelDate": "2026-01-01"
         },
         "income": {
-          "brian": {
-              "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10,
-              "bonus": { "amount": 20000, "month": 3 },
-              "birthYear": 1966,
-              "birthMonth": 5,
-              "socialSecurity": { "startAge": 67, "monthlyAmount": 3963 }
+          "dick": {
+              "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
+              "bonus": { "amount": 15000, "month": 3 },
+              "birthYear": 1968,
+              "birthMonth": 6,
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
           },
-          "andrea": {
-              "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10,
-              "bonus": { "amount": 0, "month": 12 },
-              "birthYear": 1965,
-              "birthMonth": 2,
-              "socialSecurity": { "startAge": 67, "monthlyAmount": 3300 },
-                "pension": { "monthlyAmount": 2541, "inflationAdjusted": true }
+          "jane": {
+              "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
+              "bonus": { "amount": 12000, "month": 12 },
+              "birthYear": 1968,
+              "birthMonth": 8,
+              "socialSecurity": { "startAge": 67, "monthlyAmount": 3100 },
+                "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
           },
           "workStatus": {
-            "2026": { "brian": 1.0, "andrea": 1.0 },
-            "2027": { "brian": 1.0, "andrea": 0.6 },
-            "2028": { "brian": 1.0, "andrea": 0.6 },
-            "2029": { "brian": 0.5, "andrea": 0.0 },
-            "2030": { "brian": 0.0, "andrea": 0.0 },
-            "2031": { "brian": 0.0, "andrea": 0.0 },
-            "2032": { "brian": 0.0, "andrea": 0.0 },
-            "2033": { "brian": 0.0, "andrea": 0.0 },
-            "2034": { "brian": 0.0, "andrea": 0.0 },
-            "2035": { "brian": 0.0, "andrea": 0.0 }
+            "2026": { "dick": 1.0, "jane": 1.0 },
+            "2027": { "dick": 1.0, "jane": 1.0 },
+            "2028": { "dick": 1.0, "jane": 1.0 },
+            "2029": { "dick": 1.0, "jane": 1.0 },
+            "2030": { "dick": 1.0, "jane": 1.0 },
+            "2031": { "dick": 1.0, "jane": 1.0 },
+            "2032": { "dick": 1.0, "jane": 1.0 },
+            "2033": { "dick": 0.5, "jane": 0.5 },
+            "2034": { "dick": 0.0, "jane": 0.0 },
+            "2035": { "dick": 0.0, "jane": 0.0 }
           },
           "profileSequence": [
-             { "profileId": "prof_hgv_income_base", "startDate": "2026-01-01", "isActive": true }
+             { "profileId": "prof_income_base", "startDate": "2026-01-01", "isActive": true }
           ]
         },
         "expenses": {
           "bills": [
-            { "id": "b1", "name": "AT&T Internet", "amount": 62 },
-            { "id": "b2", "name": "AT&T Cable", "amount": 228 },
-            { "id": "b4", "name": "Cell Phone", "amount": 160 },
-            { "id": "b6", "name": "Subscriptions", "amount": 250 },
-            { "id": "h4", "name": "Security System", "amount": 67 },
-            { "id": "h5", "name": "Water", "amount": 142 },
-            { "id": "h6", "name": "Electric", "amount": 78 },
-            { "id": "h7", "name": "Gas", "amount": 45 },
-            { "id": "h8", "name": "Trash", "amount": 45 },
-            { "id": "b3", "name": "Car Insurance", "amount": 520 },
-            { "id": "b5", "name": "Pet Insurance", "amount": 120 }
+            { "id": "b1", "name": "Fiber Internet", "amount": 85 },
+            { "id": "b2", "name": "Streaming Bundle", "amount": 65 },
+            { "id": "b4", "name": "Mobile Plan", "amount": 140 },
+            { "id": "b6", "name": "Gym & Clubs", "amount": 180 },
+            { "id": "h6", "name": "Utilities (Avg)", "amount": 250 },
+            { "id": "b3", "name": "Auto Insurance", "amount": 210 }
           ],
           "home": [
-            { "id": "h3", "name": "HOA", "amount": 244 },
-            { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
+            { "id": "h3", "name": "HOA Fees", "amount": 350 },
+            { "id": "h9", "name": "Maintenance Fund", "amount": 400 }
           ],
           "living": [
-            { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
+            { "id": "l1", "name": "Groceries & Dining", "amount": 1800 },
+            { "id": "l2", "name": "Fuel & Transport", "amount": 400 }
           ],
           "impounds": [
-            { "id": "h1", "name": "Property Tax", "amount": 1472 },
-            { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
+            { "id": "h1", "name": "Property Tax", "amount": 850 },
+            { "id": "h2", "name": "Home Insurance", "amount": 220 }
           ],
           "oneOffs": [],
-          "retirementBrackets": {},
+          "retirementBrackets": { "65": 15000, "70": 20000, "75": 15000, "80": 10000 },
+          "linkedLoanIds": [],
           "profileSequence": [
-             { "profileId": "prof_hgv_original", "startDate": "2026-01-01", "isActive": true }
+             { "profileId": "prof_expenses_base", "startDate": "2026-01-01", "isActive": true }
           ]
         },
         "assets": {
           "accounts": {
-            "acct_joint_default": { "id": "acct_joint_default", "type": "joint", "name": "Joint Investment", "balance": 99000, "active": true },
-            "acct_ira_default": {
-                "id": "acct_ira_default",
+            "acct_joint_1": { "id": "acct_joint_1", "type": "joint", "name": "Brokerage Account", "balance": 150000, "active": true },
+            "acct_ira_dick": {
+                "id": "acct_ira_dick",
                 "type": "inherited",
-                "name": "Inherited IRA",
-                "balance": 376000,
+                "name": "Inherited IRA (Dick)",
+                "balance": 120000,
                 "active": true,
                 "inputs": {
-                    "startDate": "2023-03-31",
-                    "withdrawalSchedule": [0.10, 0.10, 0.10, 0.10, 0.10, 0.25, 0.25, 0.25, 0.25, 1.0]
+                    "startDate": "2024-06-01",
+                    "withdrawalSchedule": {}
                 }
             },
-            "acct_401k_default": { "id": "acct_401k_default", "type": "retirement", "name": "Combined 401k", "balance": 950000, "active": true },
-            "acct_cash_default": { "id": "acct_cash_default", "type": "cash", "name": "HYSA Emergency", "balance": 30000, "active": true },
-            "acct_prop_default": { "id": "acct_prop_default", "type": "property", "name": "HGV Home", "balance": 1450000, "active": true, "inputs": { "buildYear": 2018, "zipCode": "92029", "locationFactor": 0 } }
+            "acct_401k_dick": { "id": "acct_401k_dick", "type": "retirement", "name": "Dick 401k", "balance": 650000, "active": true },
+            "acct_401k_jane": { "id": "acct_401k_jane", "type": "retirement", "name": "Jane 403b", "balance": 580000, "active": true },
+            "acct_cash_1": { "id": "acct_cash_1", "type": "cash", "name": "HYSA Savings", "balance": 45000, "active": true },
+            "acct_prop_1": { "id": "acct_prop_1", "type": "property", "name": "Primary Residence", "balance": 850000, "active": true, "inputs": { "buildYear": 2005, "zipCode": "90210", "locationFactor": 0.01 } }
           }
         },
         "loans": {
-           "mortgage": {
-              "id": "mortgage", "name": "HGV Mortgage", "type": "mortgage", "active": true,
-              "inputs": { "principal": 801000, "rate": 0.0325, "payment": 3486, "startDate": "2019-10-01", "termMonths": 360 }
+           "mortgage_1": {
+              "id": "mortgage_1", "name": "Primary Mortgage", "type": "mortgage", "active": true,
+              "inputs": { "principal": 320000, "rate": 0.035, "payment": 1850, "startDate": "2015-05-01", "termMonths": 360 }
            },
-           "heloc": {
-              "id": "heloc", "name": "Home Equity Line", "type": "revolving", "active": true,
-              "inputs": { "balance": 160419, "rate": 0.0825, "payment": 1350, "startDate": "2026-01-01" },
-              "activeStrategyId": "base",
-              "strategies": {
-                  "base": {
-                      "name": "Andie Retire Jun 27",
-                      "extraPayments": {
-                          "2026-02": 7500, "2026-03": 27500, "2026-04": 7500, "2026-05": 7500,
-                          "2026-06": 7500, "2026-07": 7500, "2026-08": 5000, "2026-09": 5000,
-                          "2026-10": 5000, "2026-11": 5000, "2026-12": 5000, "2027-01": 25000,
-                          "2027-02": 5000, "2027-03": 31337
-                      }
-                  }
-              }
+           "car_loan_1": {
+              "id": "car_loan_1", "name": "Dick's SUV", "type": "fixed", "active": true,
+              "inputs": { "principal": 15000, "rate": 0.045, "payment": 450, "startDate": "2023-01-01", "termMonths": 48 }
            }
         }
       }
     }
   },
   "profiles": {
-    "prof_hgv_original": {
-      "id": "prof_hgv_original", "name": "HGV Baseline Expenses", "type": "expenses",
+    "prof_expenses_base": {
+      "id": "prof_expenses_base", "name": "Baseline Expenses", "type": "expenses", "description": "Standard living expenses for current home.",
       "data": {
         "bills": [
-             { "id": "b1", "name": "AT&T Internet", "amount": 62 },
-             { "id": "b2", "name": "AT&T Cable", "amount": 228 },
-             { "id": "b4", "name": "Cell Phone", "amount": 160 },
-             { "id": "b6", "name": "Subscriptions", "amount": 250 },
-             { "id": "h4", "name": "Security System", "amount": 67 },
-             { "id": "h5", "name": "Water", "amount": 142 },
-             { "id": "h6", "name": "Electric", "amount": 78 },
-             { "id": "h7", "name": "Gas", "amount": 45 },
-             { "id": "h8", "name": "Trash", "amount": 45 },
-             { "id": "b3", "name": "Car Insurance", "amount": 520 },
-             { "id": "b5", "name": "Pet Insurance", "amount": 120 }
+            { "id": "b1", "name": "Fiber Internet", "amount": 85 },
+            { "id": "b2", "name": "Streaming Bundle", "amount": 65 },
+            { "id": "b4", "name": "Mobile Plan", "amount": 140 },
+            { "id": "b6", "name": "Gym & Clubs", "amount": 180 },
+            { "id": "h6", "name": "Utilities (Avg)", "amount": 250 },
+            { "id": "b3", "name": "Auto Insurance", "amount": 210 }
         ],
         "home": [
-             { "id": "h3", "name": "HOA", "amount": 244 },
-             { "id": "h9", "name": "Landscaping & Housekeeping", "amount": 675 }
+            { "id": "h3", "name": "HOA Fees", "amount": 350 },
+            { "id": "h9", "name": "Maintenance Fund", "amount": 400 }
         ],
         "living": [
-             { "id": "l1", "name": "General Living Expenses", "amount": 4500 }
+            { "id": "l1", "name": "Groceries & Dining", "amount": 1800 },
+            { "id": "l2", "name": "Fuel & Transport", "amount": 400 }
         ],
         "impounds": [
-             { "id": "h1", "name": "Property Tax", "amount": 1472 },
-             { "id": "h2", "name": "Home Owners Insurance", "amount": 457 }
-        ]
+            { "id": "h1", "name": "Property Tax", "amount": 850 },
+            { "id": "h2", "name": "Home Insurance", "amount": 220 }
+        ],
+        "linkedLoanIds": ["mortgage_1", "car_loan_1"]
       }
     },
-    "prof_hgv_income_base": {
-        "id": "prof_hgv_income_base", "name": "HGV Base Income", "type": "income",
+    "prof_income_base": {
+        "id": "prof_income_base", "name": "Working Income", "type": "income", "description": "Full employment income for both.",
         "data": {
-            "brian": {
-                "netSalary": 168000, "grossForContrib": 285000, "contribPercent": 0.10,
-                "bonus": { "amount": 20000, "month": 3 },
-                "birthYear": 1966, "birthMonth": 1,
-                "socialSecurity": { "startAge": 67, "monthlyAmount": 3963 }
+            "dick": {
+                "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
+                "bonus": { "amount": 15000, "month": 3 },
+                "birthYear": 1968, "birthMonth": 6,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
             },
-            "andrea": {
-                "netSalary": 105000, "grossForContrib": 173000, "contribPercent": 0.10,
-                "bonus": { "amount": 0, "month": 12 },
-                "birthYear": 1965, "birthMonth": 2,
-                "socialSecurity": { "startAge": 67, "monthlyAmount": 3300 },
-                "pension": { "monthlyAmount": 2541, "inflationAdjusted": true }
+            "jane": {
+                "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
+                "bonus": { "amount": 12000, "month": 12 },
+                "birthYear": 1968, "birthMonth": 8,
+                "socialSecurity": { "startAge": 67, "monthlyAmount": 3100 },
+                "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
             },
             "workStatus": {
-                "2026": { "brian": 1.0, "andrea": 1.0 },
-                "2027": { "brian": 1.0, "andrea": 0.6 },
-                "2028": { "brian": 1.0, "andrea": 0.6 },
-                "2029": { "brian": 0.5, "andrea": 0.0 },
-                "2030": { "brian": 0.0, "andrea": 0.0 },
-                "2031": { "brian": 0.0, "andrea": 0.0 },
-                "2032": { "brian": 0.0, "andrea": 0.0 },
-                "2033": { "brian": 0.0, "andrea": 0.0 },
-                "2034": { "brian": 0.0, "andrea": 0.0 },
-                "2035": { "brian": 0.0, "andrea": 0.0 }
+                "2026": { "dick": 1.0, "jane": 1.0 },
+                "2027": { "dick": 1.0, "jane": 1.0 },
+                "2028": { "dick": 1.0, "jane": 1.0 },
+                "2029": { "dick": 1.0, "jane": 1.0 },
+                "2030": { "dick": 1.0, "jane": 1.0 },
+                "2031": { "dick": 1.0, "jane": 1.0 },
+                "2032": { "dick": 1.0, "jane": 1.0 },
+                "2033": { "dick": 0.5, "jane": 0.5 },
+                "2034": { "dick": 0.0, "jane": 0.0 },
+                "2035": { "dick": 0.0, "jane": 0.0 }
             }
         }
     }
