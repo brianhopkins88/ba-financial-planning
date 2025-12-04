@@ -20,14 +20,14 @@ const getWorkStatus = (year, activeIncomeProfile, fallbackWorkStatus) => {
     if (fallbackWorkStatus && fallbackWorkStatus[year]) {
         return fallbackWorkStatus[year];
     }
-    return { dick: 0, jane: 0 };
+    return { primary: 0, spouse: 0 };
 };
 
 const getTaxRate = (status, assumptions) => {
     const tiers = assumptions.taxTiers || { bothFull: 0.32, onePart: 0.27, bothPart: 0.25, retired: 0.20 };
-    if (status.dick >= 1 && status.jane >= 1) return tiers.bothFull;
-    if ((status.dick > 0 || status.jane > 0) && (status.dick < 1 || status.jane < 1)) return tiers.onePart;
-    if (status.dick === 0 && status.jane === 0) return tiers.retired;
+    if (status.primary >= 1 && status.spouse >= 1) return tiers.bothFull;
+    if ((status.primary > 0 || status.spouse > 0) && (status.primary < 1 || status.spouse < 1)) return tiers.onePart;
+    if (status.primary === 0 && status.spouse === 0) return tiers.retired;
     return tiers.onePart;
 };
 
@@ -99,7 +99,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         rmActive: false, netWorth: 0, date: startDate,
         insolvencyLogged: false,
         properties: {}, closedLoans: new Set(), activeLoans: new Set(),
-        ssLogged: { dick: false, jane: false }, pensionLogged: { jane: false },
+        ssLogged: { primary: false, spouse: false }, pensionLogged: { primary: false, spouse: false },
         iraEvents: { depleted: false },
         forcedSaleOccurred: false, postHousingPhase: false
     };
@@ -252,8 +252,8 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const propTaxMult = Math.pow(1 + (assumptions.inflation.propertyTax || 0.02), elapsedYears);
         const propInsMult = Math.pow(1 + (assumptions.inflation.propertyInsurance || inflationRate), elapsedYears);
 
-        const dickAge = currentYear - (data.income.dick.birthYear || 1968);
-        const janeAge = currentYear - (data.income.jane.birthYear || 1968);
+        const primaryAge = currentYear - (data.income.primary.birthYear || 1968);
+        const spouseAge = currentYear - (data.income.spouse.birthYear || 1968);
 
         const monthlyBreakdown = {
             income: { employment: 0, socialSecurity: 0, pension: 0 },
@@ -262,15 +262,15 @@ export const runFinancialSimulation = (scenario, profiles) => {
         };
 
         // --- INCOME ---
-        const dickSalary = ((incomeProfile.dick?.netSalary || 0) * inflationMult) * workStatus.dick;
-        const janeSalary = ((incomeProfile.jane?.netSalary || 0) * inflationMult) * workStatus.jane;
-        monthlyBreakdown.income.employment = (dickSalary + janeSalary) * dt;
+        const primarySalary = ((incomeProfile.primary?.netSalary || 0) * inflationMult) * workStatus.primary;
+        const spouseSalary = ((incomeProfile.spouse?.netSalary || 0) * inflationMult) * workStatus.spouse;
+        monthlyBreakdown.income.employment = (primarySalary + spouseSalary) * dt;
 
-        if (incomeProfile.dick?.bonus?.month === currentMonth) {
-            monthlyBreakdown.income.employment += ((incomeProfile.dick.bonus.amount || 0) * inflationMult) * workStatus.dick;
+        if (incomeProfile.primary?.bonus?.month === currentMonth) {
+            monthlyBreakdown.income.employment += ((incomeProfile.primary.bonus.amount || 0) * inflationMult) * workStatus.primary;
         }
-        if (incomeProfile.jane?.bonus?.month === currentMonth) {
-            monthlyBreakdown.income.employment += ((incomeProfile.jane.bonus.amount || 0) * inflationMult) * workStatus.jane;
+        if (incomeProfile.spouse?.bonus?.month === currentMonth) {
+            monthlyBreakdown.income.employment += ((incomeProfile.spouse.bonus.amount || 0) * inflationMult) * workStatus.spouse;
         }
 
         const calcSS = (personKey, age, birthMonth, config) => {
@@ -284,28 +284,34 @@ export const runFinancialSimulation = (scenario, profiles) => {
             }
             return monthlyVal * (1 - taxRate);
         };
-        monthlyBreakdown.income.socialSecurity += calcSS('dick', dickAge, data.income.dick.birthMonth, incomeProfile.dick?.socialSecurity);
-        monthlyBreakdown.income.socialSecurity += calcSS('jane', janeAge, data.income.jane.birthMonth, incomeProfile.jane?.socialSecurity);
+        monthlyBreakdown.income.socialSecurity += calcSS('primary', primaryAge, data.income.primary.birthMonth, incomeProfile.primary?.socialSecurity);
+        monthlyBreakdown.income.socialSecurity += calcSS('spouse', spouseAge, data.income.spouse.birthMonth, incomeProfile.spouse?.socialSecurity);
 
-        if (incomeProfile.jane?.pension?.monthlyAmount > 0) {
-            if (workStatus.jane === 0 && !state.pensionLogged.jane) {
-                state.pensionLogged.jane = true;
-                events.push({ date: dateStr, text: "Jane Pension Started" });
+        // Generalized Pension Logic
+        const processPension = (personKey, age, status, config) => {
+            if (config?.monthlyAmount > 0) {
+                if (status === 0 && !state.pensionLogged[personKey]) {
+                    state.pensionLogged[personKey] = true;
+                    events.push({ date: dateStr, text: `${personKey} Pension Started` });
+                }
+                if (state.pensionLogged[personKey]) {
+                    let pAmount = config.monthlyAmount;
+                    if (config.inflationAdjusted) pAmount *= inflationMult;
+                    monthlyBreakdown.income.pension += pAmount * (1 - taxRate);
+                }
             }
-            if (state.pensionLogged.jane) {
-                let pAmount = incomeProfile.jane.pension.monthlyAmount;
-                if (incomeProfile.jane.pension.inflationAdjusted) pAmount *= inflationMult;
-                monthlyBreakdown.income.pension += pAmount * (1 - taxRate);
-            }
-        }
+        };
+        processPension('primary', primaryAge, workStatus.primary, incomeProfile.primary?.pension);
+        processPension('spouse', spouseAge, workStatus.spouse, incomeProfile.spouse?.pension);
+
 
         // 401k Contribs
-        const dickGross = (data.income.dick.grossForContrib || 0) * inflationMult;
-        const janeGross = (data.income.jane.grossForContrib || 0) * inflationMult;
-        const dickContribPct = incomeProfile.dick?.contribPercent ?? data.income.dick.contribPercent ?? 0;
-        const janeContribPct = incomeProfile.jane?.contribPercent ?? data.income.jane.contribPercent ?? 0;
-        const dickMatchRate = Math.min(dickContribPct, 0.06) * 0.5;
-        const totalContrib = ((dickGross * workStatus.dick * (dickContribPct + dickMatchRate)) + (janeGross * workStatus.jane * janeContribPct)) * dt;
+        const primaryGross = (data.income.primary.grossForContrib || 0) * inflationMult;
+        const spouseGross = (data.income.spouse.grossForContrib || 0) * inflationMult;
+        const primaryContribPct = incomeProfile.primary?.contribPercent ?? data.income.primary.contribPercent ?? 0;
+        const spouseContribPct = incomeProfile.spouse?.contribPercent ?? data.income.spouse.contribPercent ?? 0;
+        const primaryMatchRate = Math.min(primaryContribPct, 0.06) * 0.5;
+        const totalContrib = ((primaryGross * workStatus.primary * (primaryContribPct + primaryMatchRate)) + (spouseGross * workStatus.spouse * spouseContribPct)) * dt;
         if (totalContrib > 0) { updateComponents(state, 'retirement', totalContrib); state.retirement += totalContrib; }
 
         // --- RMD LOGIC ---
@@ -375,7 +381,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         let funMoneyAnnual = 0;
         Object.keys(brackets).forEach(k => {
             const startAge = parseInt(k);
-            if (dickAge >= startAge && dickAge < startAge + 5) funMoneyAnnual = brackets[k];
+            if (primaryAge >= startAge && primaryAge < startAge + 5) funMoneyAnnual = brackets[k];
         });
         if (funMoneyAnnual > 0) monthlyBreakdown.expenses.extra += (funMoneyAnnual * dt) * inflationMult;
 
@@ -454,7 +460,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         }
 
         // --- GROWTH & RM INTEREST ---
-        applyGrowth(dt, dickAge, assumptions, state);
+        applyGrowth(dt, primaryAge, assumptions, state);
         if (state.reverseMortgage > 0) {
             const rmRate = assumptions.rates?.reverseMortgage || 0.065;
             const interest = state.reverseMortgage * (rmRate * dt);
@@ -474,7 +480,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         // --- FORCED SALE (LTV TRIGGER) ---
         if (state.rmActive && currentPropVal > 0) {
              const ltv = state.reverseMortgage / currentPropVal;
-             const limit = getLtvLimit(dickAge);
+             const limit = getLtvLimit(primaryAge);
              if (ltv >= limit) {
                  const netEquity = (currentPropVal * 0.94) - (state.reverseMortgage + totalActiveLoanBalance);
                  state.cash += Math.max(0, netEquity);
@@ -501,7 +507,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         state.netWorth = (state.cash + state.joint + state.inherited + state.retirement + currentPropVal) - (state.reverseMortgage + totalActiveLoanBalance);
 
         timeline.push({
-            year: currentYear, month: currentMonth, date: dateStr, age: dickAge, andreaAge: janeAge,
+            year: currentYear, month: currentMonth, date: dateStr, age: primaryAge, spouseAge: spouseAge,
             income: totalIncome, expenses: totalExpenses, netCashFlow,
             breakdown: monthlyBreakdown,
             annualData: JSON.parse(JSON.stringify(accumulatedYear)),

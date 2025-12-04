@@ -183,7 +183,11 @@ export default function Assets() {
                     <input className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full text-slate-800 transition-all" value={activeAsset.name} onChange={(e) => handleUpdate('name', e.target.value)} />
                     <div className="flex gap-4 mt-2">
                         <select className="text-xs font-bold uppercase bg-slate-200 rounded px-2 py-1 text-slate-600 outline-none" value={activeAsset.owner} onChange={(e) => handleUpdate('owner', e.target.value)}>
-                            <option value="joint">Owner: Joint</option><option value="brian">Owner: Brian</option><option value="andrea">Owner: Andrea</option>
+                            // Find this block in `src/views/assets.jsx` and replace it:
+                            // Old:
+                            // <option value="joint">Owner: Joint</option><option value="brian">Owner: Brian</option><option value="andrea">Owner: Andrea</option>
+                            // New:
+                            <option value="joint">Owner: Joint</option><option value="primary">Owner: Primary</option><option value="spouse">Owner: Spouse</option>
                         </select>
                         <span className="text-xs font-bold uppercase bg-blue-100 text-blue-600 rounded px-2 py-1">{activeAsset.type}</span>
                     </div>

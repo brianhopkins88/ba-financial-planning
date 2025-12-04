@@ -1,3 +1,4 @@
+// src/views/assumptions.jsx
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { Save, ChevronDown, ChevronRight, Copy, ArrowRight, Info } from 'lucide-react';
@@ -148,20 +149,20 @@ export default function Assumptions() {
 
       {/* 3. INCOME & CONTRIBUTIONS */}
       <Section title="3. Income & Contributions">
-        <NumberInput label="Dick: Net Annual Salary" value={data.income.dick.netSalary} path="income.dick.netSalary" step="1000"
+        <NumberInput label="Primary: Net Annual Salary" value={data.income.primary.netSalary} path="income.primary.netSalary" step="1000"
             helpText="Take-home pay used for monthly cash flow." />
-        <NumberInput label="Dick: Gross (401k Calc)" value={data.income.dick.grossForContrib} path="income.dick.grossForContrib" step="1000"
+        <NumberInput label="Primary: Gross (401k Calc)" value={data.income.primary.grossForContrib} path="income.primary.grossForContrib" step="1000"
             helpText="Pre-tax amount used ONLY to calc 401k contributions." />
-        <NumberInput label="Dick: 401k Contrib Rate" value={data.income.dick.contribPercent} path="income.dick.contribPercent" step="0.01" suffix="dec"
+        <NumberInput label="Primary: 401k Contrib Rate" value={data.income.primary.contribPercent} path="income.primary.contribPercent" step="0.01" suffix="dec"
             helpText="% of Gross saved to retirement." />
 
         <div className="col-span-full h-px bg-slate-100 my-2"></div>
 
-        <NumberInput label="Jane: Net Annual Salary" value={data.income.jane.netSalary} path="income.jane.netSalary" step="1000"
+        <NumberInput label="Spouse: Net Annual Salary" value={data.income.spouse.netSalary} path="income.spouse.netSalary" step="1000"
             helpText="Take-home pay used for monthly cash flow." />
-        <NumberInput label="Jane: Gross (401k Calc)" value={data.income.jane.grossForContrib} path="income.jane.grossForContrib" step="1000"
+        <NumberInput label="Spouse: Gross (401k Calc)" value={data.income.spouse.grossForContrib} path="income.spouse.grossForContrib" step="1000"
             helpText="Pre-tax amount used ONLY to calc 401k contributions." />
-        <NumberInput label="Jane: 401k Contrib Rate" value={data.income.jane.contribPercent} path="income.jane.contribPercent" step="0.01" suffix="dec"
+        <NumberInput label="Spouse: 401k Contrib Rate" value={data.income.spouse.contribPercent} path="income.spouse.contribPercent" step="0.01" suffix="dec"
             helpText="% of Gross saved to retirement." />
       </Section>
 

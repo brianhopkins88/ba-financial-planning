@@ -1,3 +1,4 @@
+// src/views/dashboard.jsx
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine';
@@ -11,7 +12,7 @@ const CustomTooltip = ({ active, payload, label }) => {
         return (
             <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-xl text-xs z-50">
                 <div className="font-bold text-slate-700 mb-2 border-b border-slate-100 pb-1">
-                    Year: {data.year} (Dick: {data.age}, Jane: {data.andreaAge})
+                    Year: {data.year} (Primary: {data.age}, Spouse: {data.spouseAge})
                 </div>
                 <div className="space-y-1">
                     <div className="flex justify-between gap-4 text-emerald-600">

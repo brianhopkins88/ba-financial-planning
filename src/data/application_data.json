@@ -1,13 +1,13 @@
 {
   "meta": {
-    "version": "1.0.0",
+    "version": "1.3",
     "activeScenarioId": "scen_default"
   },
   "scenarios": {
     "scen_default": {
       "id": "scen_default",
-      "name": "Base Plan: Dick & Jane",
-      "description": "Baseline scenario for Dick and Jane (Age 58), retiring at 67 with a mix of joint and retirement assets.",
+      "name": "Example Plan: primary & spouse",
+      "description": "Example scenario for primary and spouse (Age 58), retiring at 67 with a mix of joint and retirement assets.",
       "created": "2025-12-01T12:00:00Z",
       "lastUpdated": "2025-12-02T08:00:00Z",
       "data": {
@@ -30,14 +30,14 @@
           "currentModelDate": "2026-01-01"
         },
         "income": {
-          "dick": {
+          "primary": {
               "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
               "bonus": { "amount": 15000, "month": 3 },
               "birthYear": 1968,
               "birthMonth": 6,
               "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
           },
-          "jane": {
+          "spouse": {
               "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
               "bonus": { "amount": 12000, "month": 12 },
               "birthYear": 1968,
@@ -46,16 +46,16 @@
                 "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
           },
           "workStatus": {
-            "2026": { "dick": 1.0, "jane": 1.0 },
-            "2027": { "dick": 1.0, "jane": 1.0 },
-            "2028": { "dick": 1.0, "jane": 1.0 },
-            "2029": { "dick": 1.0, "jane": 1.0 },
-            "2030": { "dick": 1.0, "jane": 1.0 },
-            "2031": { "dick": 1.0, "jane": 1.0 },
-            "2032": { "dick": 1.0, "jane": 1.0 },
-            "2033": { "dick": 0.5, "jane": 0.5 },
-            "2034": { "dick": 0.0, "jane": 0.0 },
-            "2035": { "dick": 0.0, "jane": 0.0 }
+            "2026": { "primary": 1.0, "spouse": 1.0 },
+            "2027": { "primary": 1.0, "spouse": 1.0 },
+            "2028": { "primary": 1.0, "spouse": 1.0 },
+            "2029": { "primary": 1.0, "spouse": 1.0 },
+            "2030": { "primary": 1.0, "spouse": 1.0 },
+            "2031": { "primary": 1.0, "spouse": 1.0 },
+            "2032": { "primary": 1.0, "spouse": 1.0 },
+            "2033": { "primary": 0.5, "spouse": 0.5 },
+            "2034": { "primary": 0.0, "spouse": 0.0 },
+            "2035": { "primary": 0.0, "spouse": 0.0 }
           },
           "profileSequence": [
              { "profileId": "prof_income_base", "startDate": "2026-01-01", "isActive": true }
@@ -92,10 +92,10 @@
         "assets": {
           "accounts": {
             "acct_joint_1": { "id": "acct_joint_1", "type": "joint", "name": "Brokerage Account", "balance": 150000, "active": true },
-            "acct_ira_dick": {
-                "id": "acct_ira_dick",
+            "acct_ira_primary": {
+                "id": "acct_ira_primary",
                 "type": "inherited",
-                "name": "Inherited IRA (Dick)",
+                "name": "Inherited IRA (primary)",
                 "balance": 120000,
                 "active": true,
                 "inputs": {
@@ -103,8 +103,8 @@
                     "withdrawalSchedule": {}
                 }
             },
-            "acct_401k_dick": { "id": "acct_401k_dick", "type": "retirement", "name": "Dick 401k", "balance": 650000, "active": true },
-            "acct_401k_jane": { "id": "acct_401k_jane", "type": "retirement", "name": "Jane 403b", "balance": 580000, "active": true },
+            "acct_401k_primary": { "id": "acct_401k_primary", "type": "retirement", "name": "primary 401k", "balance": 650000, "active": true },
+            "acct_401k_spouse": { "id": "acct_401k_spouse", "type": "retirement", "name": "spouse 403b", "balance": 580000, "active": true },
             "acct_cash_1": { "id": "acct_cash_1", "type": "cash", "name": "HYSA Savings", "balance": 45000, "active": true },
             "acct_prop_1": { "id": "acct_prop_1", "type": "property", "name": "Primary Residence", "balance": 850000, "active": true, "inputs": { "buildYear": 2005, "zipCode": "90210", "locationFactor": 0.01 } }
           }
@@ -115,7 +115,7 @@
               "inputs": { "principal": 320000, "rate": 0.035, "payment": 1850, "startDate": "2015-05-01", "termMonths": 360 }
            },
            "car_loan_1": {
-              "id": "car_loan_1", "name": "Dick's SUV", "type": "fixed", "active": true,
+              "id": "car_loan_1", "name": "primary's SUV", "type": "fixed", "active": true,
               "inputs": { "principal": 15000, "rate": 0.045, "payment": 450, "startDate": "2023-01-01", "termMonths": 48 }
            }
         }
@@ -152,13 +152,13 @@
     "prof_income_base": {
         "id": "prof_income_base", "name": "Working Income", "type": "income", "description": "Full employment income for both.",
         "data": {
-            "dick": {
+            "primary": {
                 "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
                 "bonus": { "amount": 15000, "month": 3 },
                 "birthYear": 1968, "birthMonth": 6,
                 "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
             },
-            "jane": {
+            "spouse": {
                 "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
                 "bonus": { "amount": 12000, "month": 12 },
                 "birthYear": 1968, "birthMonth": 8,
@@ -166,16 +166,16 @@
                 "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
             },
             "workStatus": {
-                "2026": { "dick": 1.0, "jane": 1.0 },
-                "2027": { "dick": 1.0, "jane": 1.0 },
-                "2028": { "dick": 1.0, "jane": 1.0 },
-                "2029": { "dick": 1.0, "jane": 1.0 },
-                "2030": { "dick": 1.0, "jane": 1.0 },
-                "2031": { "dick": 1.0, "jane": 1.0 },
-                "2032": { "dick": 1.0, "jane": 1.0 },
-                "2033": { "dick": 0.5, "jane": 0.5 },
-                "2034": { "dick": 0.0, "jane": 0.0 },
-                "2035": { "dick": 0.0, "jane": 0.0 }
+                "2026": { "primary": 1.0, "spouse": 1.0 },
+                "2027": { "primary": 1.0, "spouse": 1.0 },
+                "2028": { "primary": 1.0, "spouse": 1.0 },
+                "2029": { "primary": 1.0, "spouse": 1.0 },
+                "2030": { "primary": 1.0, "spouse": 1.0 },
+                "2031": { "primary": 1.0, "spouse": 1.0 },
+                "2032": { "primary": 1.0, "spouse": 1.0 },
+                "2033": { "primary": 0.5, "spouse": 0.5 },
+                "2034": { "primary": 0.0, "spouse": 0.0 },
+                "2035": { "primary": 0.0, "spouse": 0.0 }
             }
         }
     }

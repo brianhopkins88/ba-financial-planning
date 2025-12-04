@@ -1,20 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import initialData from '../data/application_data.json';
-import { cloneDeep, set } from 'lodash';
+import { cloneDeep, set, get } from 'lodash';
 import { format, parseISO, isValid } from 'date-fns';
 
 const DataContext = createContext();
 
-// UPDATED KEY: This invalidates the old "Brian/Andrea" data and forces "Dick/Jane" to load
-const STORAGE_KEY = 'ba_financial_planner_v1.2_dick_jane';
+// Storage key versioned for the new schema
+const STORAGE_KEY = 'ba_financial_planner_v1.3_primary_spouse';
 
 export const DataProvider = ({ children }) => {
 
   // --- 1. LOADER ---
   const [store, setStore] = useState(() => {
     let data = cloneDeep(initialData);
-    if (data.scenarios['scen_default']) data.scenarios['scen_default'].name = "Example Scenario";
-
     try {
       const local = localStorage.getItem(STORAGE_KEY);
       if (local) {
@@ -63,17 +61,96 @@ export const DataProvider = ({ children }) => {
   const ensureSequenceDefaults = (scenario) => {
       const startYear = scenario.data.assumptions.timing.startYear || 2026;
       const startMonth = scenario.data.assumptions.timing.startMonth || 1;
-      const startDateStr = `${startYear}-${String(startMonth).padStart(2,'0')}-01`;
 
       ['income', 'expenses'].forEach(type => {
           if (!scenario.data[type].profileSequence) scenario.data[type].profileSequence = [];
-          if (scenario.data[type].profileSequence.length === 0) {
-              // ...
-          } else {
+          if (scenario.data[type].profileSequence.length > 0) {
               scenario.data[type].profileSequence.sort((a,b) => a.startDate.localeCompare(b.startDate));
           }
       });
       return scenario;
+  };
+
+  // --- NEW: DATA VALIDATION & REPAIR ---
+  const validateAndRepairImport = (json) => {
+      console.log("Starting Data Validation...");
+      const fixed = cloneDeep(json);
+
+      // Helper: Rename Key in Object
+      const renameKey = (obj, oldK, newK) => {
+          if (obj && Object.prototype.hasOwnProperty.call(obj, oldK)) {
+              obj[newK] = obj[oldK];
+              delete obj[oldK];
+              return true;
+          }
+          return false;
+      };
+
+      // 1. MIGRATE LEGACY KEYS (Dick/Jane -> Primary/Spouse)
+      // We apply this to both Scenarios and Profiles
+      const fixIncomeObject = (incomeObj, contextName) => {
+          if (!incomeObj) return;
+
+          if (renameKey(incomeObj, 'dick', 'primary')) console.log(`Fixed: Renamed 'dick' to 'primary' in ${contextName}`);
+          if (renameKey(incomeObj, 'jane', 'spouse')) console.log(`Fixed: Renamed 'jane' to 'spouse' in ${contextName}`);
+
+          // Fix Work Status Years
+          if (incomeObj.workStatus) {
+              Object.keys(incomeObj.workStatus).forEach(year => {
+                  renameKey(incomeObj.workStatus[year], 'dick', 'primary');
+                  renameKey(incomeObj.workStatus[year], 'jane', 'spouse');
+              });
+          }
+
+          // 2. CHECK MISSING FIELDS & PROMPT
+          ['primary', 'spouse'].forEach(person => {
+              if (incomeObj[person]) {
+                  // Birth Month (Critical for v1.3 engine)
+                  if (incomeObj[person].birthMonth === undefined || incomeObj[person].birthMonth === null) {
+                      const val = prompt(`Data Repair (${contextName}):\nMissing Birth Month for '${person}'.\nEnter 1-12 (Default: 1):`, "1");
+                      incomeObj[person].birthMonth = parseInt(val) || 1;
+                  }
+                  // Birth Year
+                  if (!incomeObj[person].birthYear) {
+                      const val = prompt(`Data Repair (${contextName}):\nMissing Birth Year for '${person}'.\nEnter YYYY (Default: 1970):`, "1970");
+                      incomeObj[person].birthYear = parseInt(val) || 1970;
+                  }
+              }
+          });
+      };
+
+      // Fix Scenarios
+      if (fixed.scenarios) {
+          Object.values(fixed.scenarios).forEach(scen => {
+              // Strip AI Metadata
+              delete scen.__simulation_output;
+              delete scen.__assumptions_documentation;
+
+              // Rename PII in Name
+              if (scen.name && scen.name.includes("Dick")) scen.name = scen.name.replace("Dick", "Primary");
+              if (scen.name && scen.name.includes("Jane")) scen.name = scen.name.replace("Jane", "Spouse");
+
+              // Fix Income
+              if (scen.data && scen.data.income) {
+                  fixIncomeObject(scen.data.income, `Scenario: ${scen.name}`);
+              }
+
+              // Ensure Assumptions exist
+              if (!scen.data.assumptions) scen.data.assumptions = scen.data.globals || {};
+              if (!scen.data.assumptions.timing) scen.data.assumptions.timing = { startYear: 2026, startMonth: 1 };
+          });
+      }
+
+      // Fix Profiles
+      if (fixed.profiles) {
+          Object.values(fixed.profiles).forEach(prof => {
+              if (prof.type === 'income' && prof.data) {
+                  fixIncomeObject(prof.data, `Profile: ${prof.name}`);
+              }
+          });
+      }
+
+      return fixed;
   };
 
   // --- ACTIONS ---
@@ -107,7 +184,7 @@ export const DataProvider = ({ children }) => {
       setStore(prev => {
           const next = cloneDeep(prev);
           const defaultScen = cloneDeep(initialData.scenarios['scen_default']);
-          defaultScen.name = "Example Scenario";
+          defaultScen.name = "Base Plan: Primary & Spouse";
           next.scenarios[activeId].data = defaultScen.data;
           next.scenarios[activeId].name = defaultScen.name;
           return next;
@@ -169,7 +246,6 @@ export const DataProvider = ({ children }) => {
            delete newScen.__simulation_output;
            delete newScen.__assumptions_documentation;
 
-           // Ensure Sequence validity on creation
            ensureSequenceDefaults(newScen);
 
            return {
@@ -205,31 +281,33 @@ export const DataProvider = ({ children }) => {
       return d;
   });
 
+  // UPDATED IMPORT FUNCTION
   const importData = (importedJson, mode = 'new') => {
+      // 1. VALIDATE AND REPAIR
+      const cleanData = validateAndRepairImport(importedJson);
+
       setStore(prev => {
           const newState = cloneDeep(prev);
-          if (importedJson.profiles) newState.profiles = { ...newState.profiles, ...importedJson.profiles };
+          if (cleanData.profiles) newState.profiles = { ...newState.profiles, ...cleanData.profiles };
 
-          const sourceScenarios = importedJson.scenarios || {};
-          const sourceId = importedJson.meta?.activeScenarioId || Object.keys(sourceScenarios)[0];
+          const sourceScenarios = cleanData.scenarios || {};
+          const sourceId = cleanData.meta?.activeScenarioId || Object.keys(sourceScenarios)[0];
           const sourceScenario = sourceScenarios[sourceId];
 
           if (!sourceScenario) { console.error("No valid scenario found."); return prev; }
 
-          const cleanSource = cloneDeep(sourceScenario);
-          delete cleanSource.__simulation_output;
-          delete cleanSource.__assumptions_documentation;
-          ensureSequenceDefaults(cleanSource);
+          const finalScenario = cloneDeep(sourceScenario);
+          ensureSequenceDefaults(finalScenario);
 
           if (mode === 'overwrite_active') {
               const targetId = newState.meta.activeScenarioId;
-              newState.scenarios[targetId].data = cleanSource.data;
-              newState.scenarios[targetId].name = cleanSource.name;
+              newState.scenarios[targetId].data = finalScenario.data;
+              newState.scenarios[targetId].name = finalScenario.name;
               newState.scenarios[targetId].id = targetId;
           } else {
               const newId = `scen_${Date.now()}`;
-              cleanSource.id = newId;
-              newState.scenarios[newId] = cleanSource;
+              finalScenario.id = newId;
+              newState.scenarios[newId] = finalScenario;
               newState.meta.activeScenarioId = newId;
           }
           return newState;

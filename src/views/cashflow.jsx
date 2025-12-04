@@ -174,7 +174,7 @@ const CashFlowTable = ({ activeScenario, store }) => {
                                  return (
                                      <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                                          <td className="px-3 py-2 font-mono font-bold text-slate-600">{row.year}</td>
-                                         <td className="px-3 py-2 text-slate-500">{row.age} / {row.andreaAge}</td>
+                                         <td className="px-3 py-2 text-slate-500">{row.age} / {row.spouseAge}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 border-l border-slate-100 bg-blue-50/10">${Math.round(bd.income.employment).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right text-slate-600 bg-blue-50/10">${Math.round((bd.income.socialSecurity||0) + (bd.income.pension||0)).toLocaleString()}</td>
                                          <td className="px-3 py-2 text-right font-bold text-blue-600 border-r border-slate-100 bg-blue-50/20">${Math.round(totalInc).toLocaleString()}</td>
@@ -202,11 +202,11 @@ const CashFlowTable = ({ activeScenario, store }) => {
 const IncomeEditor = ({ editData, actions, globalStart }) => {
     const workStatusYears = Array.from({ length: 15 }, (_, i) => globalStart.startYear + i);
     const workStatusMap = editData.workStatus || {};
-    const janeBirthYear = editData.jane.birthYear || 1968;
+    const spouseBirthYear = editData.spouse.birthYear || 1968;
     const sortedYears = Object.keys(workStatusMap).map(Number).sort((a,b) => a-b);
     let pensionStartYear = null;
-    for (const y of sortedYears) { if (workStatusMap[y]?.jane === 0) { pensionStartYear = y; break; } }
-    const autoPensionAge = pensionStartYear ? (pensionStartYear - janeBirthYear) : "N/A";
+    for (const y of sortedYears) { if (workStatusMap[y]?.spouse === 0) { pensionStartYear = y; break; } }
+    const autoPensionAge = pensionStartYear ? (pensionStartYear - spouseBirthYear) : "N/A";
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
@@ -214,62 +214,62 @@ const IncomeEditor = ({ editData, actions, globalStart }) => {
             <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                 <h3 className="font-bold text-slate-700 mb-6 flex items-center gap-2">Personal Income Configuration</h3>
                 <div className="grid grid-cols-2 gap-12">
-                    {/* DICK */}
+                    {/* Primary */}
                     <div className="space-y-6 border-r border-slate-100 pr-6">
                         <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-blue-600 text-sm uppercase tracking-wider">Dick</h4>
+                            <h4 className="font-bold text-blue-600 text-sm uppercase tracking-wider">Primary</h4>
                             <div className="flex gap-2">
-                                <div className="w-20"><NumberInput label="Birth Year" value={editData.dick.birthYear} onChange={(v) => actions.updateScenarioData('income.dick.birthYear', v)} /></div>
-                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.dick.birthMonth} onChange={(v) => actions.updateScenarioData('income.dick.birthMonth', v)} /></div>
+                                <div className="w-20"><NumberInput label="Birth Year" value={editData.primary.birthYear} onChange={(v) => actions.updateScenarioData('income.primary.birthYear', v)} /></div>
+                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.primary.birthMonth} onChange={(v) => actions.updateScenarioData('income.primary.birthMonth', v)} /></div>
                             </div>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-100">
-                            <NumberInput label="Net Annual Salary" value={editData.dick.netSalary} onChange={(v) => actions.updateScenarioData('income.dick.netSalary', v)} step="1000" />
+                            <NumberInput label="Net Annual Salary" value={editData.primary.netSalary} onChange={(v) => actions.updateScenarioData('income.primary.netSalary', v)} step="1000" />
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Annual Bonus (Net)" value={editData.dick.bonus.amount} onChange={(v) => actions.updateScenarioData('income.dick.bonus.amount', v)} step="1000" />
-                                <MonthSelect label="Payout Month" value={editData.dick.bonus.month} onChange={(v) => actions.updateScenarioData('income.dick.bonus.month', v)} />
+                                <NumberInput label="Annual Bonus (Net)" value={editData.primary.bonus.amount} onChange={(v) => actions.updateScenarioData('income.primary.bonus.amount', v)} step="1000" />
+                                <MonthSelect label="Payout Month" value={editData.primary.bonus.month} onChange={(v) => actions.updateScenarioData('income.primary.bonus.month', v)} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Gross (401k Calc)" value={editData.dick.grossForContrib} onChange={(v) => actions.updateScenarioData('income.dick.grossForContrib', v)} step="1000" />
-                                <NumberInput label="401k Contrib Rate" value={editData.dick.contribPercent} onChange={(v) => actions.updateScenarioData('income.dick.contribPercent', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Gross (401k Calc)" value={editData.primary.grossForContrib} onChange={(v) => actions.updateScenarioData('income.primary.grossForContrib', v)} step="1000" />
+                                <NumberInput label="401k Contrib Rate" value={editData.primary.contribPercent} onChange={(v) => actions.updateScenarioData('income.primary.contribPercent', v)} step="0.01" suffix="dec" />
                             </div>
                         </div>
                         <div className="bg-blue-50/50 p-4 rounded-lg space-y-4 border border-blue-100">
                              <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="FICA Start Age" value={editData.dick.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.dick.socialSecurity.startAge', v)} />
-                                <NumberInput label="FICA Monthly ($)" value={editData.dick.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.dick.socialSecurity.monthlyAmount', v)} step="100" />
+                                <NumberInput label="FICA Start Age" value={editData.primary.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.primary.socialSecurity.startAge', v)} />
+                                <NumberInput label="FICA Monthly ($)" value={editData.primary.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.primary.socialSecurity.monthlyAmount', v)} step="100" />
                             </div>
                         </div>
                     </div>
 
-                    {/* JANE */}
+                    {/* Spouse */}
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-purple-600 text-sm uppercase tracking-wider">Jane</h4>
+                            <h4 className="font-bold text-purple-600 text-sm uppercase tracking-wider">Spouse</h4>
                             <div className="flex gap-2">
-                                <div className="w-20"><NumberInput label="Birth Year" value={editData.jane.birthYear} onChange={(v) => actions.updateScenarioData('income.jane.birthYear', v)} /></div>
-                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.jane.birthMonth} onChange={(v) => actions.updateScenarioData('income.jane.birthMonth', v)} /></div>
+                                <div className="w-20"><NumberInput label="Birth Year" value={editData.spouse.birthYear} onChange={(v) => actions.updateScenarioData('income.spouse.birthYear', v)} /></div>
+                                <div className="w-32"><MonthSelect label="Birth Month" value={editData.spouse.birthMonth} onChange={(v) => actions.updateScenarioData('income.spouse.birthMonth', v)} /></div>
                             </div>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-100">
-                            <NumberInput label="Net Annual Salary" value={editData.jane.netSalary} onChange={(v) => actions.updateScenarioData('income.jane.netSalary', v)} step="1000" />
+                            <NumberInput label="Net Annual Salary" value={editData.spouse.netSalary} onChange={(v) => actions.updateScenarioData('income.spouse.netSalary', v)} step="1000" />
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Annual Bonus (Net)" value={editData.jane.bonus.amount} onChange={(v) => actions.updateScenarioData('income.jane.bonus.amount', v)} step="1000" />
-                                <MonthSelect label="Payout Month" value={editData.jane.bonus.month} onChange={(v) => actions.updateScenarioData('income.jane.bonus.month', v)} />
+                                <NumberInput label="Annual Bonus (Net)" value={editData.spouse.bonus.amount} onChange={(v) => actions.updateScenarioData('income.spouse.bonus.amount', v)} step="1000" />
+                                <MonthSelect label="Payout Month" value={editData.spouse.bonus.month} onChange={(v) => actions.updateScenarioData('income.spouse.bonus.month', v)} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="Gross (401k Calc)" value={editData.jane.grossForContrib} onChange={(v) => actions.updateScenarioData('income.jane.grossForContrib', v)} step="1000" />
-                                <NumberInput label="401k Contrib Rate" value={editData.jane.contribPercent} onChange={(v) => actions.updateScenarioData('income.jane.contribPercent', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Gross (401k Calc)" value={editData.spouse.grossForContrib} onChange={(v) => actions.updateScenarioData('income.spouse.grossForContrib', v)} step="1000" />
+                                <NumberInput label="401k Contrib Rate" value={editData.spouse.contribPercent} onChange={(v) => actions.updateScenarioData('income.spouse.contribPercent', v)} step="0.01" suffix="dec" />
                             </div>
                         </div>
                         <div className="bg-purple-50/50 p-4 rounded-lg space-y-4 border border-purple-100">
                             <div className="grid grid-cols-2 gap-4">
-                                <NumberInput label="FICA Start Age" value={editData.jane.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.jane.socialSecurity.startAge', v)} />
-                                <NumberInput label="FICA Monthly ($)" value={editData.jane.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.jane.socialSecurity.monthlyAmount', v)} step="100" />
+                                <NumberInput label="FICA Start Age" value={editData.spouse.socialSecurity.startAge} onChange={(v) => actions.updateScenarioData('income.spouse.socialSecurity.startAge', v)} />
+                                <NumberInput label="FICA Monthly ($)" value={editData.spouse.socialSecurity.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.spouse.socialSecurity.monthlyAmount', v)} step="100" />
                             </div>
                             <div className="h-px bg-purple-100 my-2"></div>
                              <div className="flex items-center justify-between"><label className="text-xs font-bold text-purple-500 uppercase">Pension</label><span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">Starts Age: {autoPensionAge}</span></div>
-                             <NumberInput label="Monthly Amount" value={editData.jane.pension.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.jane.pension.monthlyAmount', v)} step="100" />
+                             <NumberInput label="Monthly Amount" value={editData.spouse.pension.monthlyAmount} onChange={(v) => actions.updateScenarioData('income.spouse.pension.monthlyAmount', v)} step="100" />
                         </div>
                     </div>
                 </div>
@@ -280,15 +280,15 @@ const IncomeEditor = ({ editData, actions, globalStart }) => {
                 <h3 className="font-bold text-slate-700 mb-4">Work Status Trajectory (FTE 0.0 - 1.0)</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-2">Year</th><th className="px-4 py-2 text-blue-600">Dick FTE</th><th className="px-4 py-2 text-purple-600">Jane FTE</th></tr></thead>
+                        <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-2">Year</th><th className="px-4 py-2 text-blue-600">Primary FTE</th><th className="px-4 py-2 text-purple-600">Spouse FTE</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                             {workStatusYears.map((year) => {
-                                const status = editData.workStatus?.[year] || { dick: 0, jane: 0 };
+                                const status = editData.workStatus?.[year] || { primary: 0, spouse: 0 };
                                 return (
                                     <tr key={year}>
                                         <td className="px-4 py-2 font-bold text-slate-600">{year}</td>
-                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.dick} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.dick`, parseFloat(e.target.value) || 0)} /></td>
-                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.jane} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.jane`, parseFloat(e.target.value) || 0)} /></td>
+                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.primary} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.primary`, parseFloat(e.target.value) || 0)} /></td>
+                                        <td className="px-4 py-2"><input type="number" step="0.1" max="1.0" min="0.0" className="w-20 border rounded px-2 py-1" value={status.spouse} onChange={(e) => actions.updateScenarioData(`income.workStatus.${year}.spouse`, parseFloat(e.target.value) || 0)} /></td>
                                     </tr>
                                 );
                             })}
