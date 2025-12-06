@@ -300,7 +300,7 @@ const IncomeEditor = ({ editData, actions, globalStart }) => {
     );
 };
 
-const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenario, actions, retirementBrackets }) => {
+const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenario, actions, retirementBrackets, isInflationAdjusted }) => {
     // Extract extra payments from Loan Strategies for display
     const debtPayments = useMemo(() => {
         const payments = [];
@@ -322,12 +322,16 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
     const mergedData = [...oneOffs, ...debtPayments].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
     const brackets = [65, 70, 75, 80, 85, 90];
 
+    const handleToggleInflation = (e) => {
+        actions.updateScenarioData('expenses.isFunMoneyInflationAdjusted', e.target.checked);
+    };
+
     return (
         <div className="mt-2 space-y-6">
             <div>
                 <div className="flex justify-between mb-2"><div className="text-xs font-bold text-slate-500 uppercase">One-Off & Planned Items</div><button onClick={onAdd} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 flex items-center gap-1 font-bold shadow-sm"><Plus size={12}/> Add Item</button></div>
                 <div className="bg-white border border-slate-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                     <table className="w-full text-sm text-left">
+                     <table className="w-full text-sm text-left whitespace-nowrap">
                          <thead className="bg-slate-50 text-xs text-slate-500 uppercase font-semibold border-b border-slate-200"><tr><th className="px-4 py-3 w-32">Date</th><th className="px-4 py-3">Description</th><th className="px-4 py-3 text-right">Amount</th><th className="w-10"></th></tr></thead>
                          <tbody className="divide-y divide-slate-100">
                              {mergedData.map((item, idx) => (
@@ -344,9 +348,21 @@ const FutureExpensesModule = ({ oneOffs, onChange, onAdd, onDelete, activeScenar
             </div>
 
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <div className="flex items-start gap-3 mb-4">
-                    <Palmtree className="text-blue-500 mt-1" />
-                    <div><h4 className="font-bold text-blue-700 text-sm">Long Term Fun Money (Retirement)</h4><p className="text-xs text-slate-500">Specify annual budget for travel/holidays by 5-year age brackets (starts at Age 65).</p></div>
+                <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start gap-3">
+                        <Palmtree className="text-blue-500 mt-1" />
+                        <div><h4 className="font-bold text-blue-700 text-sm">Long Term Fun Money (Retirement)</h4><p className="text-xs text-slate-500">Specify annual budget for travel/holidays by 5-year age brackets (starts at Age 65).</p></div>
+                    </div>
+                    {/* CHECKBOX FOR INFLATION ADJUSTMENT */}
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={isInflationAdjusted}
+                            onChange={handleToggleInflation}
+                            className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                        />
+                        Adjust for Inflation
+                    </label>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     {brackets.map(age => (
@@ -370,27 +386,11 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
     const updateFuture = (id, f, v) => { const list = editData.oneOffs.map(i => i.id === id ? { ...i, [f]: v } : i); actions.updateScenarioData('expenses.oneOffs', list); };
     const removeFuture = (id) => { const list = editData.oneOffs.filter(i => i.id !== id); actions.updateScenarioData('expenses.oneOffs', list); };
 
-    const toggleLoanLink = (loanId) => {
-        let currentLinks = editData.linkedLoanIds;
-        if (!currentLinks) {
-            const allActiveIds = Object.values(activeScenario.data.loans).filter(l => l.active).map(l => l.id);
-            currentLinks = allActiveIds;
-        }
-        let newLinks;
-        if (currentLinks.includes(loanId)) {
-            newLinks = currentLinks.filter(id => id !== loanId);
-        } else {
-            newLinks = [...currentLinks, loanId];
-        }
-        actions.updateScenarioData('expenses.linkedLoanIds', newLinks);
-    };
-
-    const isLoanLinked = (loanId) => {
-        if (!editData.linkedLoanIds) return true;
-        return editData.linkedLoanIds.includes(loanId);
-    };
+    // Debt Linking logic removed - Loans are now independent.
+    // We retain the visual grouping but remove the checkboxes.
 
     const retirementBrackets = editData.retirementBrackets || {};
+    const isInflationAdjusted = editData.isFunMoneyInflationAdjusted ?? false;
 
     return (
         <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
@@ -401,21 +401,14 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
             <Accordion title="Mortgage & Impounds" total={totalMortgageService + totalImpounds} defaultOpen={true} onAdd={() => addBill('impounds')}>
                 <div className="space-y-1">
                     {mortgageLoans.map(loan => {
-                        const linked = isLoanLinked(loan.id);
                         return (
-                            <div key={loan.id} className={`flex items-center gap-3 p-2 border-b border-slate-50 rounded mb-1 transition-colors ${linked ? 'bg-blue-50/50' : 'opacity-60 bg-slate-50'}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={linked}
-                                    onChange={() => toggleLoanLink(loan.id)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
-                                />
+                            <div key={loan.id} className="flex items-center gap-3 p-2 border-b border-slate-50 rounded mb-1 bg-blue-50/50">
                                 <div className="flex-1 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <CreditCard size={14} className={linked ? "text-blue-500" : "text-slate-400"}/>
-                                        <span className={`text-sm font-bold ${linked ? 'text-blue-700' : 'text-slate-500'}`}>{loan.name}</span>
+                                        <CreditCard size={14} className="text-blue-500"/>
+                                        <span className="text-sm font-bold text-blue-700">{loan.name}</span>
                                     </div>
-                                    <span className={`font-mono text-sm font-bold ${linked ? 'text-blue-700' : 'text-slate-400'}`}>
+                                    <span className="font-mono text-sm font-bold text-blue-700">
                                         ${loan.total.toLocaleString()}
                                     </span>
                                 </div>
@@ -433,18 +426,11 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
                 <div className="space-y-0.5">
                     {otherLoans.length === 0 && <div className="text-sm text-slate-400 italic p-2">No other active loans found.</div>}
                     {otherLoans.map(loan => {
-                        const linked = isLoanLinked(loan.id);
                         return (
-                            <div key={loan.id} className={`flex items-center gap-3 py-2 px-2 border-b border-slate-50 rounded transition-colors ${linked ? 'hover:bg-slate-50' : 'opacity-60'}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={linked}
-                                    onChange={() => toggleLoanLink(loan.id)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
-                                />
+                            <div key={loan.id} className="flex items-center gap-3 py-2 px-2 border-b border-slate-50 rounded bg-slate-50/50">
                                 <div className="flex-1 flex items-center justify-between">
-                                    <span className={`text-sm font-bold ${linked ? 'text-slate-700' : 'text-slate-500'}`}>{loan.name}</span>
-                                    <span className={`font-mono text-sm font-bold ${linked ? 'text-slate-700' : 'text-slate-400'}`}>${loan.total.toLocaleString()}</span>
+                                    <span className="text-sm font-bold text-slate-700">{loan.name}</span>
+                                    <span className="font-mono text-sm font-bold text-slate-700">${loan.total.toLocaleString()}</span>
                                 </div>
                             </div>
                         );
@@ -461,13 +447,14 @@ const ExpensesEditor = ({ editData, actions, mortgageLoans, otherLoans, totalBil
                     activeScenario={activeScenario}
                     actions={actions}
                     retirementBrackets={retirementBrackets}
+                    isInflationAdjusted={isInflationAdjusted}
                 />
             </Accordion>
         </div>
     );
 };
 
-// --- PROFILE MANAGER ---
+// --- PROFILE MANAGER (Unchanged) ---
 
 const ProfileMenu = ({ type, availableProfiles, editingProfileId, isDirty, onSwitchProfile, onSave, onSaveAs, onUpdateDescription, onToggleMgr, showMgr }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -593,6 +580,7 @@ export default function CashFlow() {
   if (!expenseData.oneOffs) expenseData.oneOffs = [];
   if (!expenseData.impounds) expenseData.impounds = [];
   if (!expenseData.retirementBrackets) expenseData.retirementBrackets = {};
+  if (expenseData.isFunMoneyInflationAdjusted === undefined) expenseData.isFunMoneyInflationAdjusted = false;
 
   const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
   const globalStart = assumptions.timing || { startYear: 2026, startMonth: 1 };
@@ -648,7 +636,11 @@ export default function CashFlow() {
   }, [activeScenario]);
 
   const activeLoanObjects = Object.values(activeScenario.data.loans).map(loan => {
+    // Only display loans that are ACTIVE and have STARTED by the current simulation date
     if (loan.active === false) return null;
+    const loanStart = loan.inputs.startDate ? parseISO(loan.inputs.startDate) : parseISO('2026-01-01');
+    if (isAfter(loanStart, simulationDate)) return null; // Don't show future loans in current burn rate
+
     const calc = loanCalculations[loan.id];
     if (!calc) return null;
     const row = calc.schedule.find(r => r.date === currentMonthKey);
@@ -665,15 +657,9 @@ export default function CashFlow() {
   const totalLiving = calculateTotal(expenseData.living);
   const totalImpounds = calculateTotal(expenseData.impounds);
 
-  const getLinkedTotal = (loans) => {
-      const links = expenseData.linkedLoanIds;
-      // Default to ALL if undefined
-      if (!links) return loans.reduce((s,i) => s+i.total, 0);
-      return loans.filter(l => links.includes(l.id)).reduce((s,i) => s+i.total, 0);
-  };
-
-  const totalMortgageService = getLinkedTotal(mortgageLoans);
-  const totalDebtService = getLinkedTotal(otherLoans);
+  // Removed linking logic: Total is now simple sum of all active loans for this period
+  const totalMortgageService = mortgageLoans.reduce((s,i) => s+i.total, 0);
+  const totalDebtService = otherLoans.reduce((s,i) => s+i.total, 0);
 
   const totalOneOffsThisMonth = expenseData.oneOffs.filter(item => item.date === currentMonthKey).reduce((sum, item) => sum + item.amount, 0);
   const monthlyBurn = totalBills + totalHome + totalLiving + totalImpounds + totalMortgageService + totalDebtService;
@@ -689,15 +675,6 @@ export default function CashFlow() {
   };
 
   const handleUpdateDescription = (profileId, newDesc) => {
-      // We need to update the description property on the profile object, NOT in the 'data' block
-      // This requires a new action or manual update logic
-      // Assuming 'updateProfile' only updates 'data', we need to check DataContext
-      // Looking at DataContext: updateProfile updates .data.
-      // I need to add an action to update metadata like description.
-      // But I can cheat by updating the whole object if store structure allows, or add a specific action.
-      // Let's assume I need to add 'updateProfileMeta' to DataContext later.
-      // For now, I'll direct update via existing mechanisms if possible or add logic.
-      // Actually, I'll add 'updateProfileMeta' to DataContext in step 7.
       actions.updateProfileMeta(profileId, { description: newDesc });
   };
 

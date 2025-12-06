@@ -17,7 +17,8 @@ const PARAMETER_DESCRIPTIONS = {
     "assumptions.market.initial": "Target investment return rate during the accumulation phase (pre-retirement).",
     "assumptions.market.terminal": "Target investment return rate during the preservation phase (late retirement).",
     "assumptions.property.baselineGrowth": "Base annual appreciation rate for real estate assets.",
-    "income.dick.netSalary": "Annual take-home pay used for cash flow modeling.",
+    // REFACTORED: Changed from legacy key to 'primary' for consistency with v1.3 Identity Refactor
+    "income.primary.netSalary": "Annual take-home pay used for cash flow modeling.",
     "expenses.living": "Discretionary living expenses (food, entertainment, travel) excluding fixed bills.",
     "loans.mortgage": "Primary mortgage details. Principal reduction increases Net Worth; Interest is a sunk cost."
 };
@@ -51,7 +52,7 @@ export const generateAIExport = (store) => {
 
         // 3. Construct the enriched scenario object
         exportData.scenarios[scenario.id] = {
-            ...scenario, // The raw inputs (id, name, data)
+            ...scenario, // The raw inputs (id, name, data, including the new expenses.isFunMoneyInflationAdjusted flag)
 
             // AI METADATA (Prefixed with __ to indicate computed/informational data)
             __simulation_output: {

@@ -71,8 +71,9 @@ const EventLog = ({ events }) => (
                         {events.map((ev, i) => (
                             <tr key={i} className="hover:bg-slate-50">
                                 <td className="px-6 py-3 font-mono text-slate-500 text-xs w-32">
-                                    <div>{ev.date}</div>
-                                    {ev.age && <div className="text-[10px] text-blue-400 font-bold">Age {ev.age}</div>}
+                                    {ev.date}
+                                    {/* Display Primary Age Context */}
+                                    {ev.primaryAge && <span className="block text-slate-400 font-sans mt-0.5">Age {ev.primaryAge}</span>}
                                 </td>
                                 <td className="px-6 py-3 text-slate-700 font-medium">{ev.text}</td>
                             </tr>
@@ -101,8 +102,6 @@ export default function Dashboard() {
 
         return filtered.map(t => ({
             ...t,
-            // FIX: Map accumulated annual data for correct cash flow representation
-            netCashFlow: t.annualData.netCashFlow,
             // Assets (Positive)
             assetCash: t.balances.cash,
             assetJoint: t.balances.joint,
@@ -111,7 +110,9 @@ export default function Dashboard() {
             assetProperty: t.balances.property,
             // Liabilities (Negative)
             debtStandard: -t.balances.totalDebt,
-            debtReverse: -t.balances.reverseMortgage
+            debtReverse: -t.balances.reverseMortgage,
+            // FIX: Map the correct accumulated annual total for the Cash Flow Chart
+            annualNetCashFlow: t.annualData.netCashFlow
         }));
     }, [timeline]);
 
@@ -213,9 +214,9 @@ export default function Dashboard() {
                                 formatter={(val) => [`$${Math.round(val).toLocaleString()}`, 'Annual Surplus/Deficit']}
                             />
                             <ReferenceLine y={0} stroke="#94a3b8" />
-                            <Bar dataKey="netCashFlow" radius={[4, 4, 0, 0]}>
+                            <Bar dataKey="annualNetCashFlow" radius={[4, 4, 0, 0]}>
                                 {chartData.map((entry, index) => (
-                                    <Cell key={index} fill={entry.netCashFlow >= 0 ? '#3b82f6' : '#ef4444'} />
+                                    <Cell key={index} fill={entry.annualNetCashFlow >= 0 ? '#3b82f6' : '#ef4444'} />
                                 ))}
                             </Bar>
                         </BarChart>

@@ -87,7 +87,8 @@
           "linkedLoanIds": [],
           "profileSequence": [
              { "profileId": "prof_expenses_base", "startDate": "2026-01-01", "isActive": true }
-          ]
+          ],
+          "isFunMoneyInflationAdjusted": false
         },
         "assets": {
           "accounts": {
@@ -146,7 +147,8 @@
             { "id": "h1", "name": "Property Tax", "amount": 850 },
             { "id": "h2", "name": "Home Insurance", "amount": 220 }
         ],
-        "linkedLoanIds": ["mortgage_1", "car_loan_1"]
+        "linkedLoanIds": ["mortgage_1", "car_loan_1"],
+        "isFunMoneyInflationAdjusted": false
       }
     },
     "prof_income_base": {

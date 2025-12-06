@@ -129,15 +129,21 @@ export const runFinancialSimulation = (scenario, profiles) => {
         }
     });
 
-    // Initialize Debt
+    // Initialize Debt - Updated to check Start Date
     let initialDebt = 0;
     const startMonthKey = format(startDate, 'yyyy-MM');
     Object.values(data.loans || {}).forEach(l => {
         if(l.active) {
             state.activeLoans.add(l.id);
-            const sched = loanScheduleMap[l.id];
-            if (sched && sched[startMonthKey]) initialDebt += sched[startMonthKey].balance;
-            else initialDebt += (l.inputs.balance || l.inputs.principal);
+            // Only count towards initial debt if the loan has actually started
+            const lStart = l.inputs.startDate ? parseISO(l.inputs.startDate) : startDate;
+            if (isAfter(lStart, startDate)) {
+                // Loan starts in future, do not add to initial debt
+            } else {
+                const sched = loanScheduleMap[l.id];
+                if (sched && sched[startMonthKey]) initialDebt += sched[startMonthKey].balance;
+                else initialDebt += (l.inputs.balance || l.inputs.principal);
+            }
         }
     });
 
@@ -175,9 +181,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
 
         const primaryAge = currentYear - (data.income.primary.birthYear || 1968);
         const spouseAge = currentYear - (data.income.spouse.birthYear || 1968);
+        const logEvent = (text) => events.push({ date: dateStr, text, primaryAge, spouseAge });
 
-        // Helper to log events with Age context
-        const logEvent = (text) => events.push({ date: dateStr, age: primaryAge, text });
+        // Parameters needed early for Purchase Logic
+        const incomeProfile = getProfileForDate(data.income.profileSequence, dateStr, profiles) || data.income;
+        const workStatus = getWorkStatus(currentYear, incomeProfile, data.income.workStatus);
+        const taxRate = getTaxRate(workStatus, assumptions);
 
         if (currentMonth === 1) {
             ['cash', 'joint', 'inherited', 'retirement'].forEach(k => {
@@ -194,14 +203,26 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 if (fa.type === 'property') {
                     state.properties[fa.id] = { active: true, value: fa.balance, inputs: fa.inputs, name: fa.name };
                     logEvent(`Property Purchased: ${fa.name}`);
+
                     if (fa.inputs && fa.inputs.purchasePlan && fa.inputs.purchasePlan.funding) {
                         fa.inputs.purchasePlan.funding.forEach(fund => {
                             if (fund.amount > 0 && fund.sourceId) {
                                 const sourceAcct = assets.find(a => a.id === fund.sourceId);
                                 if (sourceAcct && state[sourceAcct.type] !== undefined) {
-                                    updateComponents(state, sourceAcct.type, -fund.amount);
-                                    state[sourceAcct.type] -= fund.amount;
-                                    logEvent(`Purchase Funding: -$${Math.round(fund.amount).toLocaleString()} from ${sourceAcct.name}`);
+                                    let withdrawalAmount = fund.amount;
+                                    let taxPaid = 0;
+
+                                    if (['retirement', 'inherited'].includes(sourceAcct.type)) {
+                                        const grossNeeded = fund.amount / (1 - taxRate);
+                                        taxPaid = grossNeeded - fund.amount;
+                                        withdrawalAmount = grossNeeded;
+                                        logEvent(`Purchase Funding (Taxable): Withdrew $${Math.round(withdrawalAmount).toLocaleString()} from ${sourceAcct.name} to cover $${Math.round(fund.amount).toLocaleString()} net + taxes.`);
+                                    } else {
+                                        logEvent(`Purchase Funding: -$${Math.round(withdrawalAmount).toLocaleString()} from ${sourceAcct.name}`);
+                                    }
+
+                                    updateComponents(state, sourceAcct.type, -withdrawalAmount);
+                                    state[sourceAcct.type] -= withdrawalAmount;
                                 }
                             }
                         });
@@ -215,6 +236,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             }
         });
 
+        // --- PROPERTY SALE LOGIC ---
         Object.keys(state.properties).forEach(pid => {
             const prop = state.properties[pid];
             if (!prop.active) return;
@@ -236,21 +258,22 @@ export const runFinancialSimulation = (scenario, profiles) => {
                          }
                     }
                 });
+
                 const netProceeds = Math.max(0, salePrice - costOfSale - debtPaid);
-                updateComponents(state, 'joint', netProceeds);
-                state.joint += netProceeds;
+
+                // PLANNED SALE RULE: 100% to Cash Savings (User requirement for moving/transition)
+                if (netProceeds > 0) {
+                    updateComponents(state, 'cash', netProceeds);
+                    state.cash += netProceeds;
+                }
+
                 prop.active = false;
-                logEvent(`Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k`);
+                logEvent(`Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k (Deposited to Cash)`);
             }
         });
 
-        // Parameters
-        const incomeProfile = getProfileForDate(data.income.profileSequence, dateStr, profiles) || data.income;
         const expenseProfile = getProfileForDate(data.expenses.profileSequence, dateStr, profiles) || data.expenses;
-        const workStatus = getWorkStatus(currentYear, incomeProfile, data.income.workStatus);
-        const taxRate = getTaxRate(workStatus, assumptions);
 
-        // Inflation
         const inflationRate = assumptions.inflation.general || 0.025;
         const elapsedMonths = differenceInMonths(currentDate, startDate);
         const elapsedYears = elapsedMonths / 12;
@@ -258,88 +281,25 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const propTaxMult = Math.pow(1 + (assumptions.inflation.propertyTax || 0.02), elapsedYears);
         const propInsMult = Math.pow(1 + (assumptions.inflation.propertyInsurance || inflationRate), elapsedYears);
 
-        const monthlyBreakdown = {
-            income: { employment: 0, socialSecurity: 0, pension: 0 },
-            expenses: { bills: 0, impounds: 0, home: 0, living: 0, otherDebt: 0, extra: 0 },
-            assetFlows: { rmd: 0 }
-        };
+        // --- DEBT SERVICE (INDEPENDENT) ---
+        // Iterate all active loans. If scheduled payment exists for this month, pay it.
+        // Removed `linkedLoanIds` filter to ensure debts are independent of profile.
+        state.activeLoans.forEach(lid => {
+            const sched = loanScheduleMap[lid];
+            const info = sched ? sched[monthKey] : null;
+            if (info) {
+                 if (info.payment > 0) {
+                    if (data.loans[lid].type === 'mortgage') monthlyBreakdown.expenses.impounds += info.payment;
+                    else monthlyBreakdown.expenses.otherDebt += info.payment;
+                 }
+                 totalActiveLoanBalance += info.balance;
 
-        // --- INCOME ---
-        const primarySalary = ((incomeProfile.primary?.netSalary || 0) * inflationMult) * workStatus.primary;
-        const spouseSalary = ((incomeProfile.spouse?.netSalary || 0) * inflationMult) * workStatus.spouse;
-        monthlyBreakdown.income.employment = (primarySalary + spouseSalary) * dt;
-
-        if (incomeProfile.primary?.bonus?.month === currentMonth) {
-            monthlyBreakdown.income.employment += ((incomeProfile.primary.bonus.amount || 0) * inflationMult) * workStatus.primary;
-        }
-        if (incomeProfile.spouse?.bonus?.month === currentMonth) {
-            monthlyBreakdown.income.employment += ((incomeProfile.spouse.bonus.amount || 0) * inflationMult) * workStatus.spouse;
-        }
-
-        const calcSS = (personKey, age, birthMonth, config) => {
-            const startAge = config?.startAge || 70;
-            if (age < startAge) return 0;
-            const monthlyVal = (config?.monthlyAmount || 0) * inflationMult;
-            if (age === startAge && currentMonth < (birthMonth || 1)) return 0;
-            if (age === startAge && !state.ssLogged[personKey]) {
-                logEvent(`${personKey} FICA Started`);
-                state.ssLogged[personKey] = true;
-            }
-            return monthlyVal * (1 - taxRate);
-        };
-        monthlyBreakdown.income.socialSecurity += calcSS('primary', primaryAge, data.income.primary.birthMonth, incomeProfile.primary?.socialSecurity);
-        monthlyBreakdown.income.socialSecurity += calcSS('spouse', spouseAge, data.income.spouse.birthMonth, incomeProfile.spouse?.socialSecurity);
-
-        // Generalized Pension Logic
-        const processPension = (personKey, age, status, config) => {
-            if (config?.monthlyAmount > 0) {
-                if (status === 0 && !state.pensionLogged[personKey]) {
-                    state.pensionLogged[personKey] = true;
-                    logEvent(`${personKey} Pension Started`);
-                }
-                if (state.pensionLogged[personKey]) {
-                    let pAmount = config.monthlyAmount;
-                    if (config.inflationAdjusted) pAmount *= inflationMult;
-                    monthlyBreakdown.income.pension += pAmount * (1 - taxRate);
+                 if (info.balance <= 0.01 && !state.closedLoans.has(lid)) {
+                    logEvent(`Liability Paid Off: ${data.loans[lid].name}`);
+                    state.closedLoans.add(lid); state.activeLoans.delete(lid);
                 }
             }
-        };
-        processPension('primary', primaryAge, workStatus.primary, incomeProfile.primary?.pension);
-        processPension('spouse', spouseAge, workStatus.spouse, incomeProfile.spouse?.pension);
-
-
-        // 401k Contribs
-        const primaryGross = (data.income.primary.grossForContrib || 0) * inflationMult;
-        const spouseGross = (data.income.spouse.grossForContrib || 0) * inflationMult;
-        const primaryContribPct = incomeProfile.primary?.contribPercent ?? data.income.primary.contribPercent ?? 0;
-        const spouseContribPct = incomeProfile.spouse?.contribPercent ?? data.income.spouse.contribPercent ?? 0;
-        const primaryMatchRate = Math.min(primaryContribPct, 0.06) * 0.5;
-        const totalContrib = ((primaryGross * workStatus.primary * (primaryContribPct + primaryMatchRate)) + (spouseGross * workStatus.spouse * spouseContribPct)) * dt;
-        if (totalContrib > 0) { updateComponents(state, 'retirement', totalContrib); state.retirement += totalContrib; }
-
-        // --- RMD LOGIC ---
-        if (currentMonth === 1 && state.inherited > 0 && currentYear <= iraFinalWithdrawalYear) {
-            let pct = (currentYear === iraFinalWithdrawalYear) ? 1.0 : (iraSchedule[currentYear] || 0.20);
-            let wAmt = state.inherited * pct;
-            if (wAmt > state.inherited) wAmt = state.inherited;
-
-            if (wAmt > 0) {
-                updateComponents(state, 'inherited', -wAmt);
-                state.inherited -= wAmt;
-                const effTax = getIraTaxRate(wAmt, taxRate);
-                const net = wAmt * (1 - effTax);
-                updateComponents(state, 'cash', net);
-                state.cash += net;
-                monthlyBreakdown.assetFlows.rmd += net;
-
-                if (currentYear === iraFinalWithdrawalYear && !state.iraEvents.depleted) {
-                    logEvent("Inherited IRA Final Year: Fully Withdrawn");
-                    state.iraEvents.depleted = true;
-                }
-            }
-        }
-
-        const totalIncome = Object.values(monthlyBreakdown.income).reduce((a, b) => a + b, 0);
+        });
 
         // --- EXPENSES ---
         (expenseProfile.bills || []).forEach(i => monthlyBreakdown.expenses.bills += (i.amount || 0) * inflationMult);
@@ -354,28 +314,6 @@ export const runFinancialSimulation = (scenario, profiles) => {
             monthlyBreakdown.expenses.impounds += (i.amount || 0) * m;
         });
 
-        // Debt Service
-        let totalActiveLoanBalance = 0;
-        state.activeLoans.forEach(lid => {
-            const sched = loanScheduleMap[lid];
-            const info = sched ? sched[monthKey] : null;
-            if (info) {
-                 if (info.payment > 0) {
-                    const isLinked = !expenseProfile.linkedLoanIds || expenseProfile.linkedLoanIds.includes(lid);
-                    if (isLinked) {
-                        if (data.loans[lid].type === 'mortgage') monthlyBreakdown.expenses.impounds += info.payment;
-                        else monthlyBreakdown.expenses.otherDebt += info.payment;
-                    }
-                 }
-                 totalActiveLoanBalance += info.balance;
-
-                 if (info.balance <= 0.01 && !state.closedLoans.has(lid)) {
-                    logEvent(`Liability Paid Off: ${data.loans[lid].name}`);
-                    state.closedLoans.add(lid); state.activeLoans.delete(lid);
-                }
-            }
-        });
-
         // Extra Expenses
         (data.expenses.oneOffs || []).forEach(i => {
             if (i.date === monthKey) monthlyBreakdown.expenses.extra += (i.amount || 0) * inflationMult;
@@ -386,7 +324,16 @@ export const runFinancialSimulation = (scenario, profiles) => {
             const startAge = parseInt(k);
             if (primaryAge >= startAge && primaryAge < startAge + 5) funMoneyAnnual = brackets[k];
         });
-        if (funMoneyAnnual > 0) monthlyBreakdown.expenses.extra += (funMoneyAnnual * dt) * inflationMult;
+
+        const funMoneyInflationAdjusted = expenseProfile.isFunMoneyInflationAdjusted ?? false;
+
+        if (funMoneyAnnual > 0) {
+            let adjustedAmount = funMoneyAnnual;
+            if (funMoneyInflationAdjusted) {
+                adjustedAmount *= inflationMult;
+            }
+            monthlyBreakdown.expenses.extra += (adjustedAmount * dt);
+        }
 
         const totalExpenses = Object.values(monthlyBreakdown.expenses).reduce((a, b) => a + b, 0);
 
@@ -486,8 +433,24 @@ export const runFinancialSimulation = (scenario, profiles) => {
              const limit = getLtvLimit(primaryAge);
              if (ltv >= limit) {
                  const netEquity = (currentPropVal * 0.94) - (state.reverseMortgage + totalActiveLoanBalance);
-                 state.cash += Math.max(0, netEquity);
-                 updateComponents(state, 'cash', Math.max(0, netEquity));
+
+                 // FORCED SALE RULE: Cash Max -> Joint
+                 const cashMax = assumptions.thresholds?.cashMax || 30000;
+                 let remainingProceeds = Math.max(0, netEquity);
+                 const cashRoom = Math.max(0, cashMax - state.cash);
+
+                 const cashDeposit = Math.min(remainingProceeds, cashRoom);
+                 if (cashDeposit > 0) {
+                     updateComponents(state, 'cash', cashDeposit);
+                     state.cash += cashDeposit;
+                     remainingProceeds -= cashDeposit;
+                 }
+
+                 if (remainingProceeds > 0) {
+                    updateComponents(state, 'joint', remainingProceeds);
+                    state.joint += remainingProceeds;
+                 }
+
                  state.reverseMortgage = 0;
                  state.rmActive = false;
                  state.activeLoans.clear();

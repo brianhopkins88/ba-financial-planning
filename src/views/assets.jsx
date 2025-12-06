@@ -102,11 +102,43 @@ export default function Assets() {
       if (activeAsset.inputs?.linkedLoanId) actions.updateScenarioData(`assets.accounts.${activeId}.inputs.linkedLoanId`, null);
   };
 
-  // --- PROJECTION ENGINE ---
+  // --- PROJECTION ENGINE & HELPER ---
+  // Run full simulation to get timeline
+  const fullSimulation = useMemo(() => runFinancialSimulation(activeScenario, store.profiles), [activeScenario, store.profiles]);
+
+  // Helper to get estimated balance of ANY account at a specific future date
+  // Since engine aggregates by type, we estimate account share: (AcctStart / TypeStart) * TypeProjected
+  const getEstBalance = (accountId, targetDateStr) => {
+      if (!accountId || !targetDateStr) return 0;
+      const acct = accounts[accountId];
+      if (!acct) return 0;
+
+      const type = acct.type;
+      const targetDate = parseISO(targetDateStr);
+      if (!isValid(targetDate)) return acct.balance;
+
+      const targetYear = getYear(targetDate);
+      // Find row in timeline
+      const row = fullSimulation.timeline.find(t => t.year === targetYear && t.month === 12); // Use end of year approximation
+      if (!row) return acct.balance;
+
+      const projectedTypeTotal = row.balances[type] || 0;
+
+      // Calculate initial share
+      // We need total starting balance of that type to find percentage
+      const startTotal = Object.values(accounts)
+          .filter(a => a.type === type && a.active)
+          .reduce((sum, a) => sum + (a.balance || 0), 0);
+
+      if (startTotal === 0) return 0;
+      const share = (acct.balance || 0) / startTotal;
+
+      return projectedTypeTotal * share;
+  };
+
   const projectionData = useMemo(() => {
      if (!activeAsset) return [];
-     const simulation = runFinancialSimulation(activeScenario, store.profiles);
-     const events = simulation.events || [];
+     const events = fullSimulation.events || [];
      let endYear = 9999;
      const soldEvent = events.find(e => e.text.includes(`Sold ${activeAsset.name}`));
      if (soldEvent) endYear = parseInt(soldEvent.date.substring(0, 4));
@@ -116,7 +148,7 @@ export default function Assets() {
          return rawData.map(row => {
              const isStart = row.year === assumptions.timing.startYear;
              const targetMonth = isStart ? 0 : 12;
-             const simRow = simulation.timeline.find(t => t.year === row.year && t.month === targetMonth);
+             const simRow = fullSimulation.timeline.find(t => t.year === row.year && t.month === targetMonth);
              const rmBalance = simRow ? (simRow.balances.reverseMortgage || 0) : 0;
              const totalDebt = row.debt + rmBalance;
              const netEquity = Math.max(0, row.value - totalDebt);
@@ -124,7 +156,7 @@ export default function Assets() {
              return { ...row, debt: totalDebt, equity: netEquity, type: 'property' };
          });
      } else {
-         const timeline = simulation.timeline;
+         const timeline = fullSimulation.timeline;
          const filtered = timeline.filter(t => t.month === 12 || t.month === 0);
          return filtered.map((row, idx) => {
              const typeKey = activeAsset.type;
@@ -145,7 +177,7 @@ export default function Assets() {
              };
          });
      }
-  }, [activeAsset, activeScenario, loans, store.profiles]);
+  }, [activeAsset, fullSimulation, assumptions, loans]);
 
   const iraTableData = useMemo(() => {
       if(activeAsset?.type !== 'inherited') return [];
@@ -154,6 +186,7 @@ export default function Assets() {
 
   const isFutureProperty = useMemo(() => {
       if(activeAsset?.type !== 'property') return false;
+      if (activeAsset.inputs?.isFuture === true) return true;
       const start = activeAsset.inputs?.startDate;
       if(!start) return false;
       return isAfter(parseISO(start), simulationDate);
@@ -183,11 +216,9 @@ export default function Assets() {
                     <input className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full text-slate-800 transition-all" value={activeAsset.name} onChange={(e) => handleUpdate('name', e.target.value)} />
                     <div className="flex gap-4 mt-2">
                         <select className="text-xs font-bold uppercase bg-slate-200 rounded px-2 py-1 text-slate-600 outline-none" value={activeAsset.owner} onChange={(e) => handleUpdate('owner', e.target.value)}>
-                            // Find this block in `src/views/assets.jsx` and replace it:
-                            // Old:
-                            // <option value="joint">Owner: Joint</option><option value="brian">Owner: Brian</option><option value="andrea">Owner: Andrea</option>
-                            // New:
-                            <option value="joint">Owner: Joint</option><option value="primary">Owner: Primary</option><option value="spouse">Owner: Spouse</option>
+                            <option value="joint">Owner: Joint</option>
+                            <option value="primary">Owner: Primary</option>
+                            <option value="spouse">Owner: Spouse</option>
                         </select>
                         <span className="text-xs font-bold uppercase bg-blue-100 text-blue-600 rounded px-2 py-1">{activeAsset.type}</span>
                     </div>
@@ -203,6 +234,26 @@ export default function Assets() {
                   )}
 
                   {activeAsset.type === 'property' && (
+                      <div className="col-span-1 md:col-span-3 flex flex-col justify-end">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Property Status</label>
+                          <div className="flex bg-slate-100 p-1 rounded-lg w-max">
+                              <button
+                                  onClick={() => handleInputUpdate('isFuture', false)}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${!activeAsset.inputs?.isFuture ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                              >
+                                  Current Asset
+                              </button>
+                              <button
+                                  onClick={() => handleInputUpdate('isFuture', true)}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeAsset.inputs?.isFuture ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                              >
+                                  Future Purchase
+                              </button>
+                          </div>
+                      </div>
+                  )}
+
+                  {activeAsset.type === 'property' && (
                       <>
                         <InputGroup label="Active/Start Date" type="date" value={activeAsset.inputs?.startDate || ''} onChange={(v) => handleInputUpdate('startDate', v)} />
                         <InputGroup label="Build Year" type="number" value={activeAsset.inputs?.buildYear || ''} onChange={(v) => handleInputUpdate('buildYear', v)} />
@@ -211,53 +262,31 @@ export default function Assets() {
                       </>
                   )}
 
-                  {/* UPDATED INHERITED IRA UI */}
                   {activeAsset.type === 'inherited' && (
                       <>
                         <InputGroup label="Inheritance Date (Starts Clock)" type="date" value={activeAsset.inputs?.startDate || ''} onChange={(v) => handleInputUpdate('startDate', v)} />
-
                         <div className="col-span-4 mt-2">
                             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Remaining Annual Withdrawal Schedule (Jan 1st)</label>
                             <div className="flex flex-wrap gap-2">
                                 {(() => {
-                                    // 1. Calculate the 10-year deadline based on Inheritance Date
                                     const inheritanceStr = activeAsset.inputs?.startDate;
                                     if (!inheritanceStr) return <div className="text-xs text-red-400">Please set Inheritance Date first.</div>;
                                     const inheritanceYear = getYear(parseISO(inheritanceStr));
                                     const finalYear = inheritanceYear + 10;
-
-                                    // 2. Calculate the Schedule Start based on Scenario
                                     const scenarioStartYear = assumptions.timing?.startYear || 2026;
-                                    // If inheritance was in past, we start scheduling from scenario start.
                                     const startSchedulingYear = Math.max(scenarioStartYear, inheritanceYear);
-
-                                    // 3. Generate Years
                                     const years = [];
-                                    for (let y = startSchedulingYear; y <= finalYear; y++) {
-                                        years.push(y);
-                                    }
-
+                                    for (let y = startSchedulingYear; y <= finalYear; y++) years.push(y);
                                     if (years.length === 0) return <div className="text-xs text-slate-400">Account Depleted (Deadline Passed).</div>;
-
                                     return years.map((year) => {
                                         const schedule = activeAsset.inputs?.withdrawalSchedule || {};
                                         const isFinal = year === finalYear;
-                                        // FIXED: Default to 0.20 (20%) for empty years
                                         const val = isFinal ? 1.0 : (schedule[year] !== undefined ? schedule[year] : 0.20);
-
                                         return (
                                             <div key={year} className="flex flex-col bg-slate-50 p-2 rounded border border-slate-100 w-24">
                                                 <span className="text-[10px] text-slate-500 font-bold mb-1 text-center">{year}</span>
                                                 <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        step="0.05"
-                                                        max="1.0"
-                                                        disabled={isFinal}
-                                                        className={`w-full text-sm font-mono border rounded px-1 py-0.5 text-center outline-none focus:border-blue-500 ${isFinal ? 'bg-slate-200 text-slate-500 font-bold cursor-not-allowed' : 'bg-white text-blue-700'}`}
-                                                        value={val}
-                                                        onChange={(e) => updateIraSchedule(year, parseFloat(e.target.value))}
-                                                    />
+                                                    <input type="number" step="0.05" max="1.0" disabled={isFinal} className={`w-full text-sm font-mono border rounded px-1 py-0.5 text-center outline-none focus:border-blue-500 ${isFinal ? 'bg-slate-200 text-slate-500 font-bold cursor-not-allowed' : 'bg-white text-blue-700'}`} value={val} onChange={(e) => updateIraSchedule(year, parseFloat(e.target.value))} />
                                                     {!isFinal && <span className="absolute right-1 top-0.5 text-[9px] text-slate-400">%</span>}
                                                     {isFinal && <span className="absolute right-1 top-0.5 text-[8px] text-slate-500 font-bold">ALL</span>}
                                                 </div>
@@ -265,10 +294,6 @@ export default function Assets() {
                                         );
                                     });
                                 })()}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-2 italic">
-                                * Schedule runs from Scenario Start ({assumptions.timing?.startYear}) to 10th Year Deadline.
-                                <br/>* Final year is automatically set to 100% to satisfy IRS rules.
                             </div>
                         </div>
                       </>
@@ -357,7 +382,24 @@ export default function Assets() {
                                <button onClick={() => handleInputUpdate('purchaseType', 'existing')} className={`px-3 py-1 text-xs font-bold rounded ${activeAsset.inputs.purchaseType === 'existing' ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>Existing Home</button>
                            </div>
                        </div>
-                       {activeAsset.inputs.purchaseType === 'construction' ? (<NewConstructionPlanner asset={activeAsset} updateAsset={handleFullUpdate} actions={actions} accounts={accounts} />) : (<HomePurchasePlanner asset={activeAsset} updateAsset={handleFullUpdate} actions={actions} accounts={accounts} />)}
+
+                       {/* Pass helpers to planner */}
+                       {activeAsset.inputs.purchaseType === 'construction' ?
+                           (<NewConstructionPlanner
+                               asset={activeAsset}
+                               updateAsset={handleFullUpdate}
+                               actions={actions}
+                               accounts={accounts}
+                               getEstBalance={getEstBalance} // Pass new helper
+                            />) :
+                           (<HomePurchasePlanner
+                               asset={activeAsset}
+                               updateAsset={handleFullUpdate}
+                               actions={actions}
+                               accounts={accounts}
+                               getEstBalance={getEstBalance} // Pass new helper
+                            />)
+                       }
                    </div>
               )}
 
