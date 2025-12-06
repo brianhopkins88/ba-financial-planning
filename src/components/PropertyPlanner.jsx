@@ -49,6 +49,7 @@ const LineItem = ({ label, value, onChange, type="number", onRemove, step, readO
 
 // --- REUSABLE CLOSING COST ESTIMATOR ---
 const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loanRate, closeDateStr }) => {
+    // Ensure structure exists
     if (!plan.closingWorksheet) plan.closingWorksheet = {
         fees: { lenderAdmin: 1500, appraisal: 775, titleEscrow: 4750, recording: 225, hoaSetup: 350 },
         prepaids: { taxMonths: 3, insuranceMonths: 2, insurancePremiumYear: 1500, taxRate: 0.0125, manualTax: null, manualIns: null, manualInt: null },
@@ -62,14 +63,17 @@ const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loa
     const incentives = plan.closingWorksheet.incentives;
 
     // --- CALCULATIONS ---
+    // 1. Taxes
     const estMonthlyTax = (purchasePrice * (pre.taxRate || 0.0125)) / 12;
     const calcTax = estMonthlyTax * (pre.taxMonths || 3);
     const finalTax = pre.manualTax !== undefined && pre.manualTax !== null ? pre.manualTax : calcTax;
 
+    // 2. Insurance
     const estMonthlyIns = (pre.insurancePremiumYear || 1500) / 12;
     const calcIns = (estMonthlyIns * (pre.insuranceMonths || 2)) + (pre.insurancePremiumYear || 1500);
     const finalIns = pre.manualIns !== undefined && pre.manualIns !== null ? pre.manualIns : calcIns;
 
+    // 3. Interest (Prorated Close Month + Full Next Month)
     let calcInt = 0;
     const closeDate = parseISO(closeDateStr);
     if (isValid(closeDate) && loanAmount > 0) {
@@ -101,6 +105,7 @@ const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loa
             <div className="bg-slate-50 -m-4 p-4 mb-2 border-b border-slate-100">
                 <h4 className="font-bold text-xs text-slate-600 uppercase mb-3 flex items-center gap-2"><Info size={14}/> Prepaids & Impounds</h4>
 
+                {/* TAXES */}
                 <div className="grid grid-cols-2 gap-4 mb-2">
                     <div><label className="text-[10px] text-slate-400 uppercase font-bold">Tax Rate (Est)</label><input type="number" step="0.001" className="w-full border rounded px-2 py-1 text-sm text-right" value={pre.taxRate} onChange={e => updatePlan('closingWorksheet.prepaids.taxRate', parseFloat(e.target.value))} /></div>
                     <div><label className="text-[10px] text-slate-400 uppercase font-bold">Impound Mos</label><input type="number" className="w-full border rounded px-2 py-1 text-sm text-right" value={pre.taxMonths} onChange={e => updatePlan('closingWorksheet.prepaids.taxMonths', parseFloat(e.target.value))} /></div>
@@ -115,6 +120,7 @@ const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loa
 
                 <div className="h-px bg-slate-200 my-2"></div>
 
+                {/* INSURANCE */}
                 <LineItem label="1st Year Insurance" value={pre.insurancePremiumYear} onChange={v => updatePlan('closingWorksheet.prepaids.insurancePremiumYear', v)} />
                 <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-slate-600">Ins. Reserve Months</span>
@@ -130,6 +136,7 @@ const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loa
 
                 <div className="h-px bg-slate-200 my-2"></div>
 
+                {/* INTEREST */}
                 <LineItem
                     label="Prepaid Interest"
                     value={Math.round(finalInt)}
@@ -338,6 +345,7 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
                 </div>
 
                 <div>
+                    {/* SHARED ESTIMATOR */}
                     <ClosingCostEstimator
                         plan={plan}
                         updatePlan={updatePlan}
@@ -418,6 +426,46 @@ export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts, get
                     <button onClick={handleCreateLoan} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded w-full font-bold mt-2">
                         Create Loan Profile
                     </button>
+                </Section>
+
+                <Section title="Funding (Cash to Close)">
+                    <div className="mb-4 font-bold text-center text-xl text-slate-700 border-b border-slate-100 pb-2">
+                        <div className="text-xs text-slate-400 uppercase font-normal mb-1">Total Cash Needed</div>
+                        ${Math.round(cashNeeded).toLocaleString()}
+                    </div>
+                     <div className="space-y-2">
+                        {plan.funding.map((fund, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                                <select
+                                    className="flex-1 text-sm border rounded px-2 py-1"
+                                    value={fund.sourceId}
+                                    onChange={(e) => {
+                                        const list = [...plan.funding];
+                                        list[idx].sourceId = e.target.value;
+                                        updatePlan('funding', list);
+                                    }}
+                                >
+                                    <option value="">Select Source...</option>
+                                    {Object.values(accounts).filter(a => a.type !== 'property' && a.id !== asset.id).map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
+                                </select>
+                                <input
+                                    type="number"
+                                    className="w-24 border rounded px-2 py-1 text-sm text-right"
+                                    value={fund.amount}
+                                    onChange={(e) => {
+                                        const list = [...plan.funding];
+                                        list[idx].amount = parseFloat(e.target.value);
+                                        updatePlan('funding', list);
+                                    }}
+                                />
+                                <button onClick={() => {
+                                    const list = plan.funding.filter((_, i) => i !== idx);
+                                    updatePlan('funding', list);
+                                }}><Trash2 size={14} className="text-slate-300 hover:text-red-500"/></button>
+                            </div>
+                        ))}
+                        <button onClick={() => updatePlan('funding', [...plan.funding, { sourceId: '', amount: 0 }])} className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-2"><Plus size={12}/> Add Funding Source</button>
+                    </div>
                 </Section>
             </div>
 
