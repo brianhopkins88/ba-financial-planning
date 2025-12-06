@@ -70,7 +70,10 @@ const EventLog = ({ events }) => (
                     <tbody className="divide-y divide-slate-50">
                         {events.map((ev, i) => (
                             <tr key={i} className="hover:bg-slate-50">
-                                <td className="px-6 py-3 font-mono text-slate-500 text-xs w-32">{ev.date}</td>
+                                <td className="px-6 py-3 font-mono text-slate-500 text-xs w-32">
+                                    <div>{ev.date}</div>
+                                    {ev.age && <div className="text-[10px] text-blue-400 font-bold">Age {ev.age}</div>}
+                                </td>
                                 <td className="px-6 py-3 text-slate-700 font-medium">{ev.text}</td>
                             </tr>
                         ))}
@@ -98,6 +101,8 @@ export default function Dashboard() {
 
         return filtered.map(t => ({
             ...t,
+            // FIX: Map accumulated annual data for correct cash flow representation
+            netCashFlow: t.annualData.netCashFlow,
             // Assets (Positive)
             assetCash: t.balances.cash,
             assetJoint: t.balances.joint,

@@ -173,6 +173,12 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const monthKey = format(currentDate, 'yyyy-MM');
         const dt = 1/12;
 
+        const primaryAge = currentYear - (data.income.primary.birthYear || 1968);
+        const spouseAge = currentYear - (data.income.spouse.birthYear || 1968);
+
+        // Helper to log events with Age context
+        const logEvent = (text) => events.push({ date: dateStr, age: primaryAge, text });
+
         if (currentMonth === 1) {
             ['cash', 'joint', 'inherited', 'retirement'].forEach(k => {
                 state.annualFlows[k] = { deposits: 0, withdrawals: 0, growth: 0 };
@@ -187,7 +193,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             if (fa.startDateStr === monthKey) {
                 if (fa.type === 'property') {
                     state.properties[fa.id] = { active: true, value: fa.balance, inputs: fa.inputs, name: fa.name };
-                    events.push({ date: dateStr, text: `Property Purchased: ${fa.name}` });
+                    logEvent(`Property Purchased: ${fa.name}`);
                     if (fa.inputs && fa.inputs.purchasePlan && fa.inputs.purchasePlan.funding) {
                         fa.inputs.purchasePlan.funding.forEach(fund => {
                             if (fund.amount > 0 && fund.sourceId) {
@@ -195,7 +201,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                                 if (sourceAcct && state[sourceAcct.type] !== undefined) {
                                     updateComponents(state, sourceAcct.type, -fund.amount);
                                     state[sourceAcct.type] -= fund.amount;
-                                    events.push({ date: dateStr, text: `Purchase Funding: -$${Math.round(fund.amount).toLocaleString()} from ${sourceAcct.name}` });
+                                    logEvent(`Purchase Funding: -$${Math.round(fund.amount).toLocaleString()} from ${sourceAcct.name}`);
                                 }
                             }
                         });
@@ -203,7 +209,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 } else {
                     updateComponents(state, fa.type, fa.balance);
                     state[fa.type] += fa.balance;
-                    events.push({ date: dateStr, text: `Asset Activated: ${fa.name}` });
+                    logEvent(`Asset Activated: ${fa.name}`);
                 }
                 futureAssets[idx].activated = true;
             }
@@ -226,7 +232,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                              debtPaid += balanceToPay;
                              state.activeLoans.delete(lid);
                              state.closedLoans.add(lid);
-                             events.push({ date: dateStr, text: `Loan Paid Off (Sale): ${data.loans[lid]?.name || lid}` });
+                             logEvent(`Loan Paid Off (Sale): ${data.loans[lid]?.name || lid}`);
                          }
                     }
                 });
@@ -234,7 +240,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 updateComponents(state, 'joint', netProceeds);
                 state.joint += netProceeds;
                 prop.active = false;
-                events.push({ date: dateStr, text: `Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k` });
+                logEvent(`Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k`);
             }
         });
 
@@ -251,9 +257,6 @@ export const runFinancialSimulation = (scenario, profiles) => {
         const inflationMult = Math.pow(1 + inflationRate, elapsedYears);
         const propTaxMult = Math.pow(1 + (assumptions.inflation.propertyTax || 0.02), elapsedYears);
         const propInsMult = Math.pow(1 + (assumptions.inflation.propertyInsurance || inflationRate), elapsedYears);
-
-        const primaryAge = currentYear - (data.income.primary.birthYear || 1968);
-        const spouseAge = currentYear - (data.income.spouse.birthYear || 1968);
 
         const monthlyBreakdown = {
             income: { employment: 0, socialSecurity: 0, pension: 0 },
@@ -279,7 +282,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             const monthlyVal = (config?.monthlyAmount || 0) * inflationMult;
             if (age === startAge && currentMonth < (birthMonth || 1)) return 0;
             if (age === startAge && !state.ssLogged[personKey]) {
-                events.push({ date: dateStr, text: `${personKey} FICA Started` });
+                logEvent(`${personKey} FICA Started`);
                 state.ssLogged[personKey] = true;
             }
             return monthlyVal * (1 - taxRate);
@@ -292,7 +295,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             if (config?.monthlyAmount > 0) {
                 if (status === 0 && !state.pensionLogged[personKey]) {
                     state.pensionLogged[personKey] = true;
-                    events.push({ date: dateStr, text: `${personKey} Pension Started` });
+                    logEvent(`${personKey} Pension Started`);
                 }
                 if (state.pensionLogged[personKey]) {
                     let pAmount = config.monthlyAmount;
@@ -330,7 +333,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 monthlyBreakdown.assetFlows.rmd += net;
 
                 if (currentYear === iraFinalWithdrawalYear && !state.iraEvents.depleted) {
-                    events.push({ date: dateStr, text: "Inherited IRA Final Year: Fully Withdrawn" });
+                    logEvent("Inherited IRA Final Year: Fully Withdrawn");
                     state.iraEvents.depleted = true;
                 }
             }
@@ -367,7 +370,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                  totalActiveLoanBalance += info.balance;
 
                  if (info.balance <= 0.01 && !state.closedLoans.has(lid)) {
-                    events.push({ date: dateStr, text: `Liability Paid Off: ${data.loans[lid].name}` });
+                    logEvent(`Liability Paid Off: ${data.loans[lid].name}`);
                     state.closedLoans.add(lid); state.activeLoans.delete(lid);
                 }
             }
@@ -422,7 +425,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                 else {
                     const net = state.inherited * (1 - taxRate);
                     updateComponents(state, 'inherited', -state.inherited); state.inherited = 0; needed -= net;
-                    if (!state.iraEvents.depleted) { events.push({ date: dateStr, text: "Inherited IRA Depleted (Deficit)" }); state.iraEvents.depleted = true; }
+                    if (!state.iraEvents.depleted) { logEvent("Inherited IRA Depleted (Deficit)"); state.iraEvents.depleted = true; }
                 }
             }
 
@@ -445,10 +448,10 @@ export const runFinancialSimulation = (scenario, profiles) => {
                         const l = data.loans[lid];
                         if (l && l.type === 'mortgage') {
                              state.closedLoans.add(lid); state.activeLoans.delete(lid);
-                             events.push({ date: dateStr, text: `Mortgage Paid Off by Reverse Mortgage: ${l.name}` });
+                             logEvent(`Mortgage Paid Off by Reverse Mortgage: ${l.name}`);
                         }
                     });
-                    events.push({ date: dateStr, text: "Reverse Mortgage Activated" });
+                    logEvent("Reverse Mortgage Activated");
                 }
                 if (state.rmActive && !state.postHousingPhase) {
                     state.reverseMortgage += needed;
@@ -489,7 +492,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
                  state.rmActive = false;
                  state.activeLoans.clear();
                  state.postHousingPhase = true;
-                 events.push({ date: dateStr, text: "Forced Sale (LTV Limit Hit)" });
+                 logEvent("Forced Sale (LTV Limit Hit)");
                  Object.keys(state.properties).forEach(pid => state.properties[pid].active = false);
                  currentPropVal = 0;
                  totalActiveLoanBalance = 0;
