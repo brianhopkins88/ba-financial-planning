@@ -1,41 +1,58 @@
-import React from 'react';
-import { Plus, Trash2, ExternalLink, Calculator, Info, Undo2 } from 'lucide-react';
-import { getDaysInMonth, getDate, parseISO, isValid } from 'date-fns';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, ExternalLink, Calendar, DollarSign, Calculator, Lock, Info } from 'lucide-react';
+import { format, parseISO, isValid } from 'date-fns';
+
+// --- CONSTANTS ---
+const DEFAULT_FEES = [
+    { name: "Underwriting / Processing / Credit", note: "$1,200 – $1,800", amount: 1500 },
+    { name: "Appraisal", note: "$650 – $900", amount: 775 },
+    { name: "Title & Escrow (Owner + Lender)", note: "$3,500 – $6,000", amount: 4750 },
+    { name: "Recording & Notary", note: "$150 – $300", amount: 225 },
+    { name: "HOA Setup / Transfer", note: "$200 – $500", amount: 350 }
+];
+
+const DEFAULT_PREPAIDS = [
+    { name: "Prepaid Interest (15 days)", note: "@ 5.5%", amount: 900 },
+    { name: "Property Tax Impound (3 mo)", note: "@ 1.1%", amount: 4417 },
+    { name: "Insurance Impound (2 mo)", note: "Est. $250", amount: 250 },
+    { name: "1st Year Home Insurance", note: "Premium", amount: 1500 }
+];
 
 // --- SHARED UTILS ---
-const Section = ({ title, children, rightAction }) => (
-    <div className="mb-6 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
-        <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-            <span className="font-bold text-xs uppercase text-slate-500 tracking-wider">{title}</span>
-            {rightAction}
-        </div>
-        <div className="p-4">{children}</div>
-    </div>
-);
+const Section = ({ title, children, rightAction, variant = 'default' }) => {
+    const variants = {
+        default: 'border-slate-200',
+        blue: 'border-blue-200 ring-1 ring-blue-50',
+        emerald: 'border-emerald-200 ring-1 ring-emerald-50'
+    };
+    const headerVariants = {
+        default: 'bg-slate-50 text-slate-500',
+        blue: 'bg-blue-50 text-blue-600',
+        emerald: 'bg-emerald-50 text-emerald-600'
+    };
 
-const LineItem = ({ label, value, onChange, type="number", onRemove, step, readOnly, subtext, highlight, onRevert }) => (
-    <div className={`flex justify-between items-center mb-2 group ${highlight ? 'bg-blue-50/50 -mx-2 px-2 py-1 rounded' : ''}`}>
-        <div className="flex-1">
-            <span className={`text-sm ${highlight ? 'font-bold text-blue-700' : 'text-slate-600'}`}>{label}</span>
-            {subtext && <div className="text-[10px] text-slate-400 leading-tight">{subtext}</div>}
+    return (
+        <div className={`mb-6 bg-white border rounded-lg overflow-hidden shadow-sm ${variants[variant]}`}>
+            <div className={`px-4 py-2 border-b border-slate-100 flex justify-between items-center ${headerVariants[variant]}`}>
+                <span className="font-bold text-xs uppercase tracking-wider flex items-center gap-2">{title}</span>
+                {rightAction}
+            </div>
+            <div className="p-4">{children}</div>
         </div>
+    );
+};
+
+const LineItem = ({ label, value, onChange, type="number", onRemove, step, negative = false, readOnly = false }) => (
+    <div className="flex justify-between items-center mb-2 group">
+        <span className="text-sm text-slate-600 flex-1">{label}</span>
         <div className="flex items-center gap-2">
-            {onRevert && (
-                <button onClick={onRevert} className="text-blue-400 hover:text-blue-600" title="Revert to Calculated Value">
-                    <Undo2 size={14}/>
-                </button>
-            )}
             <div className="relative w-32">
-                <span className="absolute left-2 top-1.5 text-slate-400 text-xs">$</span>
+                <span className={`absolute left-2 top-1.5 text-xs ${negative ? 'text-red-400' : 'text-slate-400'}`}>$</span>
                 <input
                     type={type}
                     step={step}
                     readOnly={readOnly}
-                    className={`w-full pl-6 pr-2 py-1 border rounded text-right text-sm font-mono font-bold outline-none ${
-                        readOnly
-                        ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-default'
-                        : 'border-slate-200 text-slate-700 focus:border-blue-500 bg-white'
-                    } ${onRevert ? 'ring-1 ring-blue-200 bg-blue-50/20' : ''}`}
+                    className={`w-full pl-6 pr-2 py-1 border border-slate-200 rounded text-right text-sm font-mono font-bold outline-none focus:border-blue-500 ${negative ? 'text-red-600' : 'text-slate-700'} ${readOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                     value={value}
                     onChange={(e) => onChange && onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
                 />
@@ -47,448 +64,405 @@ const LineItem = ({ label, value, onChange, type="number", onRemove, step, readO
     </div>
 );
 
-// --- REUSABLE CLOSING COST ESTIMATOR ---
-const ClosingCostEstimator = ({ plan, updatePlan, purchasePrice, loanAmount, loanRate, closeDateStr }) => {
-    // Ensure structure exists
-    if (!plan.closingWorksheet) plan.closingWorksheet = {
-        fees: { lenderAdmin: 1500, appraisal: 775, titleEscrow: 4750, recording: 225, hoaSetup: 350 },
-        prepaids: { taxMonths: 3, insuranceMonths: 2, insurancePremiumYear: 1500, taxRate: 0.0125, manualTax: null, manualIns: null, manualInt: null },
-        buyDown: { points: 0, cost: 0 },
-        incentives: { builderCredit: 0 }
-    };
+const WorksheetTable = ({ items, onUpdate, onAdd, onRemove, title }) => (
+    <div className="bg-slate-50 p-3 rounded border border-slate-200 mb-4">
+        <div className="flex text-[10px] font-bold text-slate-400 uppercase mb-2">
+            <div className="flex-1">{title}</div>
+            <div className="w-24 text-right pr-2">Range / Note</div>
+            <div className="w-24 text-right">Est. Cost</div>
+            <div className="w-6"></div>
+        </div>
+        <div className="space-y-1">
+            {items.map((item, idx) => (
+                <div key={idx} className="flex gap-2 items-center group">
+                    <input
+                        className="flex-1 text-xs border border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none text-slate-700"
+                        value={item.name}
+                        onChange={(e) => onUpdate(idx, 'name', e.target.value)}
+                        placeholder="Item Name"
+                    />
+                    <div className="w-24 relative">
+                         <input
+                            className="w-full text-[10px] text-right bg-transparent text-slate-400 border-b border-transparent focus:border-slate-300 outline-none"
+                            value={item.note || ''}
+                            onChange={(e) => onUpdate(idx, 'note', e.target.value)}
+                            placeholder="Range..."
+                        />
+                    </div>
+                    <div className="relative w-24">
+                        <span className="absolute left-2 top-1 text-[10px] text-slate-400">$</span>
+                        <input
+                            type="number"
+                            className="w-full pl-4 pr-1 py-1 text-xs text-right font-mono font-bold border border-slate-200 rounded focus:border-blue-500 outline-none text-slate-700"
+                            value={item.amount}
+                            onChange={(e) => onUpdate(idx, 'amount', parseFloat(e.target.value) || 0)}
+                        />
+                    </div>
+                    <button onClick={() => onRemove(idx)} className="text-slate-300 hover:text-red-500 w-6 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
+                </div>
+            ))}
+        </div>
+        <button onClick={onAdd} className="text-[10px] text-blue-600 font-bold flex items-center gap-1 hover:underline mt-2">
+            <Plus size={10}/> Add Line Item
+        </button>
+    </div>
+);
 
-    const fees = plan.closingWorksheet.fees;
-    const pre = plan.closingWorksheet.prepaids;
-    const buyDown = plan.closingWorksheet.buyDown;
-    const incentives = plan.closingWorksheet.incentives;
-
-    // --- CALCULATIONS ---
-    // 1. Taxes
-    const estMonthlyTax = (purchasePrice * (pre.taxRate || 0.0125)) / 12;
-    const calcTax = estMonthlyTax * (pre.taxMonths || 3);
-    const finalTax = pre.manualTax !== undefined && pre.manualTax !== null ? pre.manualTax : calcTax;
-
-    // 2. Insurance
-    const estMonthlyIns = (pre.insurancePremiumYear || 1500) / 12;
-    const calcIns = (estMonthlyIns * (pre.insuranceMonths || 2)) + (pre.insurancePremiumYear || 1500);
-    const finalIns = pre.manualIns !== undefined && pre.manualIns !== null ? pre.manualIns : calcIns;
-
-    // 3. Interest (Prorated Close Month + Full Next Month)
-    let calcInt = 0;
-    const closeDate = parseISO(closeDateStr);
-    if (isValid(closeDate) && loanAmount > 0) {
-        const daysInMonth = getDaysInMonth(closeDate);
-        const dayOfMonth = getDate(closeDate);
-        const daysRemaining = daysInMonth - dayOfMonth + 1;
-        const annualInterest = loanAmount * (loanRate || 0);
-        const dailyInterest = annualInterest / 365;
-        const monthlyInterest = annualInterest / 12;
-        calcInt = (dailyInterest * daysRemaining) + monthlyInterest;
-    }
-    const finalInt = pre.manualInt !== undefined && pre.manualInt !== null ? pre.manualInt : calcInt;
-
-    const totalFixedFees = fees.lenderAdmin + fees.appraisal + fees.titleEscrow + fees.recording + fees.hoaSetup;
-    const totalPrepaids = finalTax + finalIns + finalInt;
-    const totalClosingCosts = totalFixedFees + totalPrepaids + (buyDown.cost || 0);
+const FundingSourceSelector = ({ list, updateList, accounts, simulation, targetDate, label, autoLoanMode }) => {
+    const targetMonthKey = targetDate ? targetDate.substring(0, 7) : null;
+    const projectedBalances = useMemo(() => {
+        if (!simulation || !targetMonthKey) return {};
+        const row = simulation.timeline.find(t => t.date.startsWith(targetMonthKey))
+                 || simulation.timeline[simulation.timeline.length - 1];
+        return row ? row.balances : {};
+    }, [simulation, targetMonthKey]);
 
     return (
-        <Section title="Closing Cost Estimator">
-            <div className="bg-slate-50 -m-4 p-4 mb-2 border-b border-slate-100">
-                <h4 className="font-bold text-xs text-slate-600 uppercase mb-3 flex items-center gap-2"><Calculator size={14}/> Fixed Fees</h4>
-                <LineItem label="Lender / Admin / Credit" value={fees.lenderAdmin} onChange={v => updatePlan('closingWorksheet.fees.lenderAdmin', v)} subtext="Norm: $1,200 - $1,800" />
-                <LineItem label="Appraisal" value={fees.appraisal} onChange={v => updatePlan('closingWorksheet.fees.appraisal', v)} subtext="Norm: $650 - $900" />
-                <LineItem label="Title & Escrow" value={fees.titleEscrow} onChange={v => updatePlan('closingWorksheet.fees.titleEscrow', v)} subtext="Norm: $3,500 - $6,000" />
-                <LineItem label="Recording & Notary" value={fees.recording} onChange={v => updatePlan('closingWorksheet.fees.recording', v)} subtext="Norm: $150 - $300" />
-                <LineItem label="HOA Transfer/Setup" value={fees.hoaSetup} onChange={v => updatePlan('closingWorksheet.fees.hoaSetup', v)} subtext="Norm: $200 - $500" />
+        <div className="space-y-3">
+            <div className="flex justify-between items-center text-xs text-slate-400 mb-1">
+                <span>{label}</span>
+                <span>Date: <span className="font-mono text-slate-600">{targetDate || 'Not Set'}</span></span>
             </div>
+            {list.map((fund, idx) => {
+                const acct = accounts[fund.sourceId];
+                const projBal = acct ? (projectedBalances[acct.type] || acct.balance) : 0;
+                const isOverdraft = projBal < fund.amount;
 
-            <div className="bg-slate-50 -m-4 p-4 mb-2 border-b border-slate-100">
-                <h4 className="font-bold text-xs text-slate-600 uppercase mb-3 flex items-center gap-2"><Info size={14}/> Prepaids & Impounds</h4>
-
-                {/* TAXES */}
-                <div className="grid grid-cols-2 gap-4 mb-2">
-                    <div><label className="text-[10px] text-slate-400 uppercase font-bold">Tax Rate (Est)</label><input type="number" step="0.001" className="w-full border rounded px-2 py-1 text-sm text-right" value={pre.taxRate} onChange={e => updatePlan('closingWorksheet.prepaids.taxRate', parseFloat(e.target.value))} /></div>
-                    <div><label className="text-[10px] text-slate-400 uppercase font-bold">Impound Mos</label><input type="number" className="w-full border rounded px-2 py-1 text-sm text-right" value={pre.taxMonths} onChange={e => updatePlan('closingWorksheet.prepaids.taxMonths', parseFloat(e.target.value))} /></div>
-                </div>
-                <LineItem
-                    label="Tax Impound (Total)"
-                    value={Math.round(finalTax)}
-                    onChange={v => updatePlan('closingWorksheet.prepaids.manualTax', v)}
-                    onRevert={pre.manualTax !== null ? () => updatePlan('closingWorksheet.prepaids.manualTax', null) : null}
-                    subtext={pre.manualTax !== null ? "Manual Override Active" : `Calculated based on Price & Rate`}
-                />
-
-                <div className="h-px bg-slate-200 my-2"></div>
-
-                {/* INSURANCE */}
-                <LineItem label="1st Year Insurance" value={pre.insurancePremiumYear} onChange={v => updatePlan('closingWorksheet.prepaids.insurancePremiumYear', v)} />
-                <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-slate-600">Ins. Reserve Months</span>
-                    <input type="number" className="w-16 border rounded text-right text-sm" value={pre.insuranceMonths} onChange={e => updatePlan('closingWorksheet.prepaids.insuranceMonths', parseFloat(e.target.value))} />
-                </div>
-                <LineItem
-                    label="Insurance Total"
-                    value={Math.round(finalIns)}
-                    onChange={v => updatePlan('closingWorksheet.prepaids.manualIns', v)}
-                    onRevert={pre.manualIns !== null ? () => updatePlan('closingWorksheet.prepaids.manualIns', null) : null}
-                    subtext={pre.manualIns !== null ? "Manual Override Active" : "1st Year + Reserves"}
-                />
-
-                <div className="h-px bg-slate-200 my-2"></div>
-
-                {/* INTEREST */}
-                <LineItem
-                    label="Prepaid Interest"
-                    value={Math.round(finalInt)}
-                    onChange={v => updatePlan('closingWorksheet.prepaids.manualInt', v)}
-                    onRevert={pre.manualInt !== null ? () => updatePlan('closingWorksheet.prepaids.manualInt', null) : null}
-                    subtext={pre.manualInt !== null ? "Manual Override Active" : "Close Month Prorated + Next Full Month"}
-                />
-            </div>
-
-            <div className="mt-6 space-y-3">
-                <LineItem label="Rate Buy Down Cost" value={buyDown.cost} onChange={v => updatePlan('closingWorksheet.buyDown.cost', v)} />
-                <LineItem label="Builder/Lender Credits" value={incentives.builderCredit} onChange={v => updatePlan('closingWorksheet.incentives.builderCredit', v)} highlight={true} subtext="Applied against closing costs" />
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
-                <span className="font-bold text-slate-700">Total Est. Closing Costs</span>
-                <span className="font-bold text-red-600">${Math.round(totalClosingCosts).toLocaleString()}</span>
-            </div>
-        </Section>
-    );
-};
-
-// --- MULTI-SOURCE FUNDING COMPONENT ---
-const FundingManager = ({ plan, updatePlan, accounts, getEstBalance, closeDateStr, totalNeeded }) => {
-
-    // Toggle a funding source in the list
-    const toggleSource = (sourceId) => {
-        const currentSources = plan.funding || [];
-        const exists = currentSources.find(f => f.sourceId === sourceId);
-        let newSources;
-        if (exists) {
-            newSources = currentSources.filter(f => f.sourceId !== sourceId);
-        } else {
-            newSources = [...currentSources, { sourceId, amount: 0 }];
-        }
-        updatePlan('funding', newSources);
-    };
-
-    const updateAmount = (sourceId, amount) => {
-        const newSources = plan.funding.map(f => f.sourceId === sourceId ? { ...f, amount } : f);
-        updatePlan('funding', newSources);
-    };
-
-    const totalAllocated = (plan.funding || []).reduce((sum, f) => sum + (f.amount || 0), 0);
-    const remaining = totalNeeded - totalAllocated;
-
-    return (
-        <Section title="5. Funding Logic (Source of Cash)">
-            <div className="mb-4 text-sm text-slate-600 flex justify-between bg-emerald-50 p-3 rounded border border-emerald-100">
-                <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold text-emerald-600">Cash Needed at Close</span>
-                    <span className="font-bold text-emerald-800 text-lg">${Math.round(totalNeeded).toLocaleString()}</span>
-                </div>
-                <div className="flex flex-col text-right">
-                    <span className="text-[10px] uppercase font-bold text-emerald-600">Remaining to Alloc</span>
-                    <span className={`font-bold text-lg ${remaining > 0 ? 'text-red-500' : 'text-emerald-500'}`}>${Math.round(remaining).toLocaleString()}</span>
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 pb-1 mb-1">
-                    <div className="col-span-5">Account</div>
-                    <div className="col-span-3 text-right">Est. Bal (Close)</div>
-                    <div className="col-span-4 text-right">Use Amount (Net)</div>
-                </div>
-                {Object.values(accounts).filter(a => a.type !== 'property').map(acct => {
-                    const isSelected = (plan.funding || []).some(f => f.sourceId === acct.id);
-                    const fundingItem = (plan.funding || []).find(f => f.sourceId === acct.id) || { amount: 0 };
-                    const estBalance = getEstBalance ? getEstBalance(acct.id, closeDateStr) : acct.balance;
-
-                    // Tax Warning
-                    const isTaxable = ['retirement', 'inherited'].includes(acct.type);
-
-                    return (
-                        <div key={acct.id} className={`p-2 rounded border transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:border-blue-100'}`}>
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggleSource(acct.id)}
-                                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                                />
-                                <div className="flex-1 grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-5 truncate">
-                                        <div className="font-bold text-slate-700 text-xs truncate">{acct.name}</div>
-                                        <div className="text-[9px] text-slate-400 uppercase">{acct.type}</div>
-                                    </div>
-                                    <div className="col-span-3 text-right text-xs font-mono text-slate-500">
-                                        ${Math.round(estBalance).toLocaleString()}
-                                    </div>
-                                    <div className="col-span-4">
-                                        {isSelected ? (
-                                            <input
-                                                type="number"
-                                                className="w-full text-right text-sm font-bold border rounded px-1 py-0.5 focus:border-blue-500 outline-none"
-                                                value={fundingItem.amount}
-                                                onChange={(e) => updateAmount(acct.id, parseFloat(e.target.value) || 0)}
-                                            />
-                                        ) : <div className="text-right text-xs text-slate-300">-</div>}
-                                    </div>
-                                </div>
-                            </div>
-                            {isSelected && isTaxable && fundingItem.amount > 0 && (
-                                <div className="ml-7 mt-1 text-[10px] text-orange-600 bg-orange-50 p-1 rounded flex gap-1 items-center">
-                                    <Info size={10}/>
-                                    <span>Subject to Income Tax. System will withdraw gross amount to cover net need.</span>
+                return (
+                    <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded border border-slate-100">
+                        <div className="flex-1 flex flex-col">
+                            <select
+                                className="text-sm bg-transparent outline-none font-medium text-slate-700 w-full"
+                                value={fund.sourceId}
+                                onChange={(e) => {
+                                    const newList = [...list];
+                                    newList[idx].sourceId = e.target.value;
+                                    updateList(newList);
+                                }}
+                            >
+                                <option value="">Select Account...</option>
+                                {Object.values(accounts).filter(a => a.type !== 'property').map(a => (
+                                    <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+                                ))}
+                            </select>
+                            {fund.sourceId && (
+                                <div className="flex items-center gap-1 mt-1">
+                                    <span className="text-[10px] text-slate-400 uppercase">Est. Bal:</span>
+                                    <span className={`text-[10px] font-mono font-bold ${isOverdraft ? 'text-red-500' : 'text-blue-600'}`}>
+                                        ${Math.round(projBal).toLocaleString()}
+                                    </span>
                                 </div>
                             )}
                         </div>
-                    );
-                })}
-            </div>
-        </Section>
+                        <input
+                            type="number"
+                            className="w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right font-bold h-8 focus:border-blue-500 outline-none"
+                            value={fund.amount}
+                            onChange={(e) => {
+                                const newList = [...list];
+                                newList[idx].amount = parseFloat(e.target.value);
+                                updateList(newList);
+                            }}
+                        />
+                        <button onClick={() => {
+                            const newList = list.filter((_, i) => i !== idx);
+                            updateList(newList);
+                        }}><Trash2 size={14} className="text-slate-300 hover:text-red-500"/></button>
+                    </div>
+                );
+            })}
+            <button
+                onClick={() => updateList([...list, { sourceId: '', amount: 0 }])}
+                className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-1 hover:underline"
+            >
+                <Plus size={12}/> {autoLoanMode ? "Add Down Payment Source" : "Add Funding Source"}
+            </button>
+        </div>
     );
 };
 
 // --- NEW CONSTRUCTION PLANNER ---
-export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, getEstBalance }) => {
-    const plan = asset.inputs.purchasePlan || {};
-    if (!plan.costs) plan.costs = { base: 0, structural: 0, design: 0, lot: 0, credits: 0, custom: [] };
-    if (!plan.deposits) plan.deposits = { contract: 30000, designPct: 0.20 };
-    if (!plan.loan) plan.loan = { amount: 0, rate: 0.065, term: 360 };
-    if (!plan.funding) plan.funding = [];
+export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, simulation }) => {
+    const plan = asset.inputs.purchasePlan || {
+        contractDate: '2026-06-01',
+        autoLoan: false,
+        costs: { base: 0, structural: 0, design: 0, lot: 0, credits: 0, custom: [] },
+        closing: { fees: [...DEFAULT_FEES], prepaids: [...DEFAULT_PREPAIDS], buyDown: 0, lenderCredits: 0 },
+        deposits: { contract: 30000, designPct: 0.20 },
+        loan: { amount: 0, rate: 0.065, term: 360 },
+        funding: [],
+        depositFunding: []
+    };
+
+    if (!plan.closing.fees) plan.closing.fees = [...DEFAULT_FEES];
+    if (!plan.closing.prepaids) plan.closing.prepaids = [...DEFAULT_PREPAIDS];
 
     const updatePlan = (path, val) => {
         const newPlan = { ...plan };
         const parts = path.split('.');
-        let current = newPlan;
-        for (let i = 0; i < parts.length - 1; i++) {
-            if (!current[parts[i]]) current[parts[i]] = {};
-            current = current[parts[i]];
-        }
-        current[parts[parts.length - 1]] = val;
+        if(parts.length === 1) newPlan[parts[0]] = val;
+        else if(parts.length === 2) newPlan[parts[0]][parts[1]] = val;
         updateAsset('inputs.purchasePlan', newPlan);
     };
 
-    const totalPurchasePrice = (plan.costs.base + plan.costs.structural + plan.costs.design + plan.costs.lot) - plan.costs.credits + plan.costs.custom.reduce((s,i) => s + i.amount, 0);
+    // 1. PRICE CALCS
+    const totalPurchasePrice = (plan.costs.base + plan.costs.structural + plan.costs.design + plan.costs.lot) - plan.costs.credits;
 
-    // Quick Calc for summary
-    const closingWorksheet = plan.closingWorksheet || {};
-    const fees = closingWorksheet.fees || { lenderAdmin:0, appraisal:0, titleEscrow:0, recording:0, hoaSetup:0 };
-    const pre = closingWorksheet.prepaids || { manualTax:null, manualIns:null, manualInt:null };
-    const buyDown = closingWorksheet.buyDown || { cost: 0 };
-    const incentives = closingWorksheet.incentives || { builderCredit: 0 };
+    // 2. DEPOSIT CALCS
+    const designDepositAmount = plan.costs.design * (plan.deposits.designPct || 0);
+    const totalDepositsDue = plan.deposits.contract + designDepositAmount;
 
-    const estTax = pre.manualTax ?? ((totalPurchasePrice * (pre.taxRate||0.0125)/12) * (pre.taxMonths||3));
-    const estIns = pre.manualIns ?? (((pre.insurancePremiumYear||1500)/12 * (pre.insuranceMonths||2)) + (pre.insurancePremiumYear||1500));
-    const estInt = pre.manualInt ?? 0;
+    // 3. CLOSING CALCS
+    const feesTotal = (plan.closing.fees || []).reduce((s,i) => s + (i.amount || 0), 0);
+    const prepaidsTotal = (plan.closing.prepaids || []).reduce((s,i) => s + (i.amount || 0), 0);
+    const buyDownCost = plan.closing.buyDown || 0;
+    const lenderCredits = plan.closing.lenderCredits || 0;
 
-    const estClosing = fees.lenderAdmin+fees.appraisal+fees.titleEscrow+fees.recording+fees.hoaSetup + estTax + estIns + estInt + (buyDown.cost||0);
-    const depositsPaid = plan.deposits.contract + (plan.costs.design * plan.deposits.designPct);
-    const totalCashToClose = (totalPurchasePrice + estClosing) - incentives.builderCredit - depositsPaid - plan.loan.amount;
+    const totalClosingCosts = feesTotal + prepaidsTotal + buyDownCost;
+    const netClosingCosts = Math.max(0, totalClosingCosts - lenderCredits);
+
+    // 4. CASH TO CLOSE
+    const grandTotalRequired = totalPurchasePrice + netClosingCosts;
+    const remainingToClose = grandTotalRequired - totalDepositsDue;
+
+    // Funding Totals
+    const totalClosingFunding = (plan.funding || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const totalDepositFunding = (plan.depositFunding || []).reduce((s, i) => s + (i.amount || 0), 0);
+
+    // --- AUTO-LOAN LOGIC ---
+    useEffect(() => {
+        if (plan.autoLoan) {
+            const calculatedLoan = Math.max(0, remainingToClose - totalClosingFunding);
+            if (calculatedLoan !== plan.loan.amount) {
+                updatePlan('loan.amount', calculatedLoan);
+            }
+        }
+    }, [plan.autoLoan, remainingToClose, totalClosingFunding, plan.loan.amount]);
+
+    // --- AUTO-SYNC ASSET VALUE ---
+    // Ensure the main asset "balance" (value) matches the calculated Total Purchase Price
+    useEffect(() => {
+        if (Math.abs(asset.balance - totalPurchasePrice) > 1) {
+            updateAsset('balance', totalPurchasePrice);
+        }
+    }, [totalPurchasePrice, asset.balance]);
+
+    // Gap (Manual Mode)
+    const fundingGap = remainingToClose - plan.loan.amount - totalClosingFunding;
+
+    const updateList = (listKey, idx, field, val) => {
+        const items = [...plan.closing[listKey]];
+        items[idx] = { ...items[idx], [field]: val };
+        updatePlan(`closing.${listKey}`, items);
+    };
+    const addToList = (listKey) => updatePlan(`closing.${listKey}`, [...plan.closing[listKey], { name: '', amount: 0 }]);
+    const removeFromList = (listKey, idx) => updatePlan(`closing.${listKey}`, plan.closing[listKey].filter((_, i) => i !== idx));
 
     const handleCreateLoan = () => {
-        const startDate = asset.inputs.startDate || '2026-06-01';
+        const startDate = asset.inputs.startDate || '2027-01-01';
+
+        // CALCULATE PMT (Monthly Payment)
+        const principal = plan.loan.amount;
+        const rate = plan.loan.rate;
+        const months = plan.loan.term;
+        let pmt = 0;
+
+        if (principal > 0 && months > 0) {
+            if (rate === 0) {
+                pmt = principal / months;
+            } else {
+                const r = rate / 12;
+                pmt = (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+            }
+        }
+
         actions.addLoan({
             name: `Loan: ${asset.name}`,
             type: 'mortgage',
-            inputs: { principal: plan.loan.amount, rate: plan.loan.rate, termMonths: plan.loan.term, startDate: startDate, payment: 0 }
+            inputs: {
+                principal: principal,
+                rate: rate,
+                termMonths: months,
+                startDate: startDate,
+                payment: Number(pmt.toFixed(2)) // Store correct calculated payment
+            }
         });
-        alert(`Loan created starting ${startDate}.`);
+        alert(`Loan created starting ${startDate} with payment $${pmt.toFixed(2)}/mo. Check Loans module.`);
     };
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-6 animate-in fade-in duration-500">
+            {/* TOP METRICS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div className="p-4 bg-slate-50 rounded border border-slate-200">
+                     <div className="text-[10px] text-slate-500 font-bold uppercase">Total Purchase Price</div>
+                     <div className="text-xl font-bold text-slate-700">${totalPurchasePrice.toLocaleString()}</div>
+                 </div>
                  <div className="p-4 bg-blue-50 rounded border border-blue-100">
-                     <div className="text-xs text-blue-500 font-bold uppercase">Total Purchase Price</div>
-                     <div className="text-2xl font-bold text-blue-700">${totalPurchasePrice.toLocaleString()}</div>
+                     <div className="text-[10px] text-blue-600 font-bold uppercase flex justify-between">
+                        <span>Due at Contract</span>
+                        <span>{plan.contractDate}</span>
+                     </div>
+                     <div className="text-xl font-bold text-blue-700">${totalDepositsDue.toLocaleString()}</div>
                  </div>
                  <div className="p-4 bg-emerald-50 rounded border border-emerald-100">
-                     <div className="text-xs text-emerald-600 font-bold uppercase">Net Cash to Close</div>
-                     <div className="text-2xl font-bold text-emerald-700">${Math.round(totalCashToClose).toLocaleString()}</div>
-                     <div className="text-[10px] text-emerald-600 mt-1">Includes Closing Costs & Credits</div>
+                     <div className="text-[10px] text-emerald-600 font-bold uppercase flex justify-between">
+                        <span>Due at Closing</span>
+                        <span>{asset.inputs.startDate}</span>
+                     </div>
+                     <div className="text-xl font-bold text-emerald-700">${remainingToClose.toLocaleString()}</div>
                  </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                    <Section title="1. Purchase Price Worksheet">
+
+                {/* --- LEFT: COST WORKSHEET --- */}
+                <div className="space-y-6">
+                    <Section title="1. Construction Costs">
+                        <div className="flex gap-4 mb-4">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Contract Date</label>
+                                <input type="date" className="w-full border border-slate-200 rounded px-2 py-1 text-sm font-bold text-slate-700" value={plan.contractDate} onChange={e => updatePlan('contractDate', e.target.value)} />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Closing Date</label>
+                                <input type="date" disabled className="w-full bg-slate-100 border border-slate-200 rounded px-2 py-1 text-sm font-bold text-slate-500" value={asset.inputs.startDate || ''} />
+                            </div>
+                        </div>
                         <LineItem label="Base Price" value={plan.costs.base} onChange={v => updatePlan('costs.base', v)} />
                         <LineItem label="Lot Premium" value={plan.costs.lot} onChange={v => updatePlan('costs.lot', v)} />
                         <LineItem label="Structural Upgrades" value={plan.costs.structural} onChange={v => updatePlan('costs.structural', v)} />
                         <LineItem label="Design Studio Options" value={plan.costs.design} onChange={v => updatePlan('costs.design', v)} />
                         <div className="h-px bg-slate-100 my-2"/>
-                        <LineItem label="Builder Credits (-)" value={plan.costs.credits} onChange={v => updatePlan('costs.credits', v)} />
+                        <LineItem label="Builder Credits (-)" value={plan.costs.credits} onChange={v => updatePlan('costs.credits', v)} negative />
                     </Section>
 
-                    <Section title="2. Loan Estimation" rightAction={<button onClick={handleCreateLoan} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center gap-1">Create Loan <ExternalLink size={10}/></button>}>
-                        <LineItem label="Loan Amount" value={plan.loan.amount} onChange={v => updatePlan('loan.amount', v)} />
-                        <LineItem label="Interest Rate (dec)" value={plan.loan.rate} onChange={v => updatePlan('loan.rate', v)} step="0.001" />
-                        <LineItem label="Close Date (Calc Interest)" value={asset.inputs.startDate || ''} type="date" onChange={v => updateAsset('inputs.startDate', v)} />
-                    </Section>
+                    <Section title="3. Loan & Closing Cost Estimator" rightAction={<button onClick={handleCreateLoan} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center gap-1">Create Loan <ExternalLink size={10}/></button>}>
 
-                    <Section title="3. Deposits & Prepaids">
-                        <LineItem label="Contract Deposit" value={plan.deposits.contract} onChange={v => updatePlan('deposits.contract', v)} />
-                        <div className="flex justify-between items-center mb-2">
-                             <span className="text-sm text-slate-600">Design Deposit %</span>
-                             <input type="number" className="w-16 border rounded text-right text-sm" value={plan.deposits.designPct} onChange={e => updatePlan('deposits.designPct', parseFloat(e.target.value))} step="0.1"/>
+                        {/* Auto-Calculate Toggle */}
+                        <div className="flex items-center gap-2 mb-4 bg-indigo-50 p-2 rounded border border-indigo-100">
+                            <input
+                                type="checkbox"
+                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                                checked={plan.autoLoan || false}
+                                onChange={e => updatePlan('autoLoan', e.target.checked)}
+                            />
+                            <div className="flex-1">
+                                <span className="text-xs font-bold text-indigo-700 block">Auto-Calculate Loan Amount</span>
+                                <span className="text-[10px] text-indigo-500">Loan fills the gap between Price and Cash Paid</span>
+                            </div>
+                            <Calculator size={16} className="text-indigo-300"/>
                         </div>
-                        <div className="flex justify-between items-center mb-2 text-sm text-slate-400">
-                            <span>Calc Design Deposit:</span>
-                            <span>${(plan.costs.design * plan.deposits.designPct).toLocaleString()}</span>
+
+                        <LineItem
+                            label="Loan Amount"
+                            value={plan.loan.amount}
+                            onChange={v => updatePlan('loan.amount', v)}
+                            readOnly={plan.autoLoan}
+                        />
+                        <LineItem label="Interest Rate (dec)" value={plan.loan.rate} onChange={v => updatePlan('loan.rate', v)} step="0.001" />
+
+                        <div className="h-px bg-slate-100 my-4"/>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Closing Cost Worksheet</span>
+                            <span className="text-xs font-bold text-slate-700">${totalClosingCosts.toLocaleString()} (Gross)</span>
+                        </div>
+
+                        <WorksheetTable
+                            title="Lender, Title & Escrow Fees"
+                            items={plan.closing.fees}
+                            onUpdate={(i,f,v) => updateList('fees', i, f, v)}
+                            onAdd={() => addToList('fees')}
+                            onRemove={(i) => removeFromList('fees', i)}
+                        />
+
+                        <WorksheetTable
+                            title="Prepaids & Impounds"
+                            items={plan.closing.prepaids}
+                            onUpdate={(i,f,v) => updateList('prepaids', i, f, v)}
+                            onAdd={() => addToList('prepaids')}
+                            onRemove={(i) => removeFromList('prepaids', i)}
+                        />
+
+                        <LineItem label="Interest Rate Buy Down" value={plan.closing.buyDown} onChange={v => updatePlan('closing.buyDown', v)} />
+                        <div className="h-px bg-slate-100 my-2"/>
+                        <LineItem label="Lender / Seller Credits (-)" value={plan.closing.lenderCredits} onChange={v => updatePlan('closing.lenderCredits', v)} negative />
+
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 bg-slate-50 p-2 rounded">
+                            <span className="text-xs font-bold text-slate-600">Net Closing Costs (to pay)</span>
+                            <span className="text-sm font-bold text-slate-800">${netClosingCosts.toLocaleString()}</span>
                         </div>
                     </Section>
                 </div>
 
-                <div>
-                    {/* SHARED ESTIMATOR */}
-                    <ClosingCostEstimator
-                        plan={plan}
-                        updatePlan={updatePlan}
-                        purchasePrice={totalPurchasePrice}
-                        loanAmount={plan.loan.amount}
-                        loanRate={plan.loan.rate}
-                        closeDateStr={asset.inputs.startDate}
-                    />
+                {/* --- RIGHT: FUNDING --- */}
+                <div className="space-y-6">
+                    <Section title="2. Contract Deposits" variant="blue">
+                        <LineItem label="Fixed Contract Deposit" value={plan.deposits.contract} onChange={v => updatePlan('deposits.contract', v)} />
+                        <div className="flex justify-between items-center mb-2">
+                             <span className="text-sm text-slate-600">Design Deposit %</span>
+                             <input type="number" className="w-16 border rounded text-right text-sm" value={plan.deposits.designPct} onChange={e => updatePlan('deposits.designPct', parseFloat(e.target.value))} step="0.1"/>
+                        </div>
+                        <div className="flex justify-between items-center mb-4 text-xs text-slate-400 bg-slate-50 p-2 rounded">
+                            <span>Calc Design Deposit:</span>
+                            <span className="font-mono">${designDepositAmount.toLocaleString()}</span>
+                        </div>
 
-                    <FundingManager
-                        plan={plan}
-                        updatePlan={updatePlan}
-                        accounts={accounts}
-                        getEstBalance={getEstBalance}
-                        closeDateStr={asset.inputs.startDate}
-                        totalNeeded={totalCashToClose}
-                    />
+                        <div className="border-t border-slate-100 pt-4">
+                            <FundingSourceSelector
+                                list={plan.depositFunding || []}
+                                updateList={(l) => updatePlan('depositFunding', l)}
+                                accounts={accounts}
+                                simulation={simulation}
+                                targetDate={plan.contractDate}
+                                label="Source for Deposits"
+                            />
+                            <div className="flex justify-between items-center mt-2 text-xs">
+                                <span className="text-slate-400">Total Funded:</span>
+                                <span className={`font-bold ${totalDepositFunding < totalDepositsDue ? 'text-red-500' : 'text-green-600'}`}>
+                                    ${totalDepositFunding.toLocaleString()} / ${totalDepositsDue.toLocaleString()}
+                                </span>
+                            </div>
+                        </div>
+                    </Section>
+
+                    <Section title={plan.autoLoan ? "4. Cash Down Payment" : "4. Closing Funding"} variant="emerald">
+                        <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-100">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-emerald-800 font-bold uppercase">Total Due at Close</span>
+                                <span className="text-sm font-bold text-emerald-700 font-mono">${remainingToClose.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs opacity-70">
+                                <span>(Price + Net Costs - Deposits)</span>
+                            </div>
+                        </div>
+
+                        {!plan.autoLoan && fundingGap !== 0 && (
+                            <div className={`mb-4 p-2 rounded text-xs font-bold flex justify-between items-center ${fundingGap > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                <span>{fundingGap > 0 ? "Shortfall (Need Cash or Loan):" : "Surplus (Reduce Loan/Cash):"}</span>
+                                <span>${Math.abs(fundingGap).toLocaleString()}</span>
+                            </div>
+                        )}
+
+                        <FundingSourceSelector
+                            list={plan.funding}
+                            updateList={(l) => updatePlan('funding', l)}
+                            accounts={accounts}
+                            simulation={simulation}
+                            targetDate={asset.inputs.startDate}
+                            label={plan.autoLoan ? "Sources for Down Payment" : "Sources to Fill Gap"}
+                            autoLoanMode={plan.autoLoan}
+                        />
+                    </Section>
                 </div>
             </div>
         </div>
     );
 };
 
-// --- EXISTING HOME PLANNER ---
-export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts, getEstBalance }) => {
-    const plan = asset.inputs.purchasePlan || {};
-    if (!plan.costs) plan.costs = { base: 0 };
-    if (!plan.loan) plan.loan = { amount: 0, rate: 0.065, term: 360 };
-    if (!plan.funding) plan.funding = [];
-
-    const updatePlan = (path, val) => {
-        const newPlan = { ...plan };
-        const parts = path.split('.');
-        let current = newPlan;
-        for (let i = 0; i < parts.length - 1; i++) {
-            if (!current[parts[i]]) current[parts[i]] = {};
-            current = current[parts[i]];
-        }
-        current[parts[parts.length - 1]] = val;
-        updateAsset('inputs.purchasePlan', newPlan);
-    };
-
-    const totalPurchasePrice = plan.costs.base || 0;
-
-    // Quick Calc for summary
-    const closingWorksheet = plan.closingWorksheet || {};
-    const fees = closingWorksheet.fees || { lenderAdmin:0, appraisal:0, titleEscrow:0, recording:0, hoaSetup:0 };
-    const pre = closingWorksheet.prepaids || { manualTax:null, manualIns:null, manualInt:null };
-    const buyDown = closingWorksheet.buyDown || { cost: 0 };
-    const incentives = closingWorksheet.incentives || { builderCredit: 0 };
-
-    const estTax = pre.manualTax ?? ((totalPurchasePrice * (pre.taxRate||0.0125)/12) * (pre.taxMonths||3));
-    const estIns = pre.manualIns ?? (((pre.insurancePremiumYear||1500)/12 * (pre.insuranceMonths||2)) + (pre.insurancePremiumYear||1500));
-    const estInt = pre.manualInt ?? 0;
-
-    const estClosing = fees.lenderAdmin+fees.appraisal+fees.titleEscrow+fees.recording+fees.hoaSetup + estTax + estIns + estInt + (buyDown.cost||0);
-    const cashNeeded = (totalPurchasePrice + estClosing) - incentives.builderCredit - plan.loan.amount;
-
-    const handleCreateLoan = () => {
-        const startDate = asset.inputs.startDate || '2026-01-01';
-        actions.addLoan({
-            name: `Loan: ${asset.name}`,
-            type: 'mortgage',
-            inputs: { principal: plan.loan.amount, rate: plan.loan.rate, termMonths: 360, startDate: startDate, payment: 0 }
-        });
-        alert("Loan created.");
-    };
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <Section title="Purchase Details">
-                    <LineItem label="Purchase Price" value={plan.costs.base} onChange={v => updatePlan('costs.base', v)} />
-                    <div className="h-px bg-slate-100 my-4"/>
-                    <LineItem label="Loan Amount" value={plan.loan.amount} onChange={v => updatePlan('loan.amount', v)} />
-                    <LineItem label="Interest Rate" value={plan.loan.rate} onChange={v => updatePlan('loan.rate', v)} step="0.001" />
-                    <LineItem label="Close Date" value={asset.inputs.startDate || ''} type="date" onChange={v => updateAsset('inputs.startDate', v)} />
-                    <button onClick={handleCreateLoan} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded w-full font-bold mt-2">
-                        Create Loan Profile
-                    </button>
-                </Section>
-
-                <Section title="Funding (Cash to Close)">
-                    <div className="mb-4 font-bold text-center text-xl text-slate-700 border-b border-slate-100 pb-2">
-                        <div className="text-xs text-slate-400 uppercase font-normal mb-1">Total Cash Needed</div>
-                        ${Math.round(cashNeeded).toLocaleString()}
-                    </div>
-                     <div className="space-y-2">
-                        {plan.funding.map((fund, idx) => (
-                            <div key={idx} className="flex gap-2 items-center">
-                                <select
-                                    className="flex-1 text-sm border rounded px-2 py-1"
-                                    value={fund.sourceId}
-                                    onChange={(e) => {
-                                        const list = [...plan.funding];
-                                        list[idx].sourceId = e.target.value;
-                                        updatePlan('funding', list);
-                                    }}
-                                >
-                                    <option value="">Select Source...</option>
-                                    {Object.values(accounts).filter(a => a.type !== 'property' && a.id !== asset.id).map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
-                                </select>
-                                <input
-                                    type="number"
-                                    className="w-24 border rounded px-2 py-1 text-sm text-right"
-                                    value={fund.amount}
-                                    onChange={(e) => {
-                                        const list = [...plan.funding];
-                                        list[idx].amount = parseFloat(e.target.value);
-                                        updatePlan('funding', list);
-                                    }}
-                                />
-                                <button onClick={() => {
-                                    const list = plan.funding.filter((_, i) => i !== idx);
-                                    updatePlan('funding', list);
-                                }}><Trash2 size={14} className="text-slate-300 hover:text-red-500"/></button>
-                            </div>
-                        ))}
-                        <button onClick={() => updatePlan('funding', [...plan.funding, { sourceId: '', amount: 0 }])} className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-2"><Plus size={12}/> Add Funding Source</button>
-                    </div>
-                </Section>
-            </div>
-
-            <div>
-                {/* SHARED ESTIMATOR */}
-                <ClosingCostEstimator
-                    plan={plan}
-                    updatePlan={updatePlan}
-                    purchasePrice={plan.costs.base}
-                    loanAmount={plan.loan.amount}
-                    loanRate={plan.loan.rate}
-                    closeDateStr={asset.inputs.startDate}
-                />
-
-                <FundingManager
-                    plan={plan}
-                    updatePlan={updatePlan}
-                    accounts={accounts}
-                    getEstBalance={getEstBalance}
-                    closeDateStr={asset.inputs.startDate}
-                    totalNeeded={cashNeeded}
-                />
-            </div>
-        </div>
-    );
+// --- HOME PURCHASE PLANNER ---
+export const HomePurchasePlanner = ({ asset, updateAsset, actions, accounts, simulation }) => {
+    // Basic implementation for existing homes - logic mirrors the advanced planner
+    // but simplified UI.
+    return <NewConstructionPlanner asset={asset} updateAsset={updateAsset} actions={actions} accounts={accounts} simulation={simulation} />;
 };

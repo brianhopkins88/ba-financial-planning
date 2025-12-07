@@ -1,6 +1,6 @@
 # BA Financial Analysis – Requirements Specification
 
-**Version:** 1.3 **Date:** December 3, 2025
+**Version:** 1.4 **Date:** December 7, 2025
 
 ------
 
@@ -115,6 +115,28 @@
   - **Linked Loans:** User can link specific liabilities to a property to calculate "Net Equity" in charts.
   - **Forced Sale:** If the Financial Engine triggers a sale (due to LTV limits), the asset is marked inactive for future years.
 
+#### **2.3.1 Property Planner (New Construction & Purchase)**
+A specialized tool for modeling complex real estate transactions.
+
+- **Closing Cost Estimator:**
+  - **Itemized Worksheet:** Users can add line items for Fees (Title, Escrow, Admin) and Prepaids (Tax, Insurance).
+  - **Credits:** Explicit fields for "Interest Rate Buy Down" (adds cost) and "Lender/Seller Credits" (subtracts cost).
+  - **Net Calculation:** `Cash to Close = (Price + Fees + Prepaids + BuyDown) - Credits - Deposits - Loan`.
+- **Two-Stage Funding Logic:**
+  - **Contract Phase:**
+    - **Trigger:** `contractDate` (e.g., 6 months before close).
+    - **Action:** Deposits are withdrawn from selected source accounts on this date.
+  - **Closing Phase:**
+    - **Trigger:** Asset `startDate` (Close of Escrow).
+    - **Action:** Remaining balance is withdrawn from selected source accounts.
+- **Dynamic Balance Lookup:**
+  - The funding selector displays the **Projected Balance** of source accounts *specifically* at the target date (Contract or Close), allowing users to see if they will have liquidity available in the future.
+- **Auto-Loan Calculation:**
+  - **Toggle:** "Auto-Calculate Loan Amount."
+  - **Behavior:** The system automatically adjusts the loan principal to fill the gap between the Total Purchase Price and the Cash Down Payment specified by the user.
+- **Asset Sync:**
+  - The main Asset's "Value" field is automatically synchronized with the "Total Purchase Price" calculated in the planner.
+
 ------
 
 ## 3. Financial Engine & Lifecycle Phases
@@ -127,15 +149,28 @@ The simulation logic uses a **Strict Monthly Engine** (420 steps) to ensure prec
 - **State Management:**
   - **Monthly Reset:** Income and expenses are calculated fresh each month.
   - **Annual Reset:** Accumulators for the "Detailed Analysis Table" are reset every January.
+- **Valuation Timing (v1.4):**
+  - Property values are updated at the **start** of every monthly loop.
+  - This ensures that if a sale event occurs in June, the sale price reflects the appreciated value for that specific year/month, not a stale value.
 - **Inflation:**
   - Calculated based on `(Total Elapsed Months / 12)` for smooth, stateless compounding.
-- **Taxation Rules (Refined v1.3):**
+- **Taxation Rules:**
   - **Employment Income:** Treated as **Net (Take-Home)**.
   - **Social Security & Pension:** Treated as **Gross**. The engine applies the effective tax rate (derived from Work Status tiers) before adding to Net Cash Flow.
   - **Retirement Withdrawals:** Treated as **Gross**. Taxes are deducted dynamically upon withdrawal.
 - **Debt Filtering:** The engine respects `linkedLoanIds` in Expense Profiles. Unlinked loans are excluded from monthly operating expense calculations.
 
-### 3.2 Phase 1: Standard Retirement (Accumulation/Decumulation)
+### 3.2 Property Transaction Logic (v1.4)
+
+- **Planned Sale Proceeds:**
+  - When a user-defined property sale occurs (e.g., selling current home to move):
+  - **Net Proceeds** (`Sale Price - Costs - Debt`) are deposited 100% into **Cash Savings**.
+  - **Reason:** This cash is typically intended as liquidity for the next home purchase and should not be swept into long-term investments immediately.
+- **Purchase Funding:**
+  - **Contract Deposits:** Processed in the simulation month matching `contractDate`. Funds are withdrawn from specified accounts.
+  - **Closing Balance:** Processed in the simulation month matching `startDate`. Funds are withdrawn, and the new Property Asset becomes active.
+
+### 3.3 Phase 1: Standard Retirement (Accumulation/Decumulation)
 
 - **Condition:** Liquid assets exist, and 401k is above the **Safety Floor** (e.g., $300k).
 - **Deficit Waterfall:**
@@ -144,7 +179,7 @@ The simulation logic uses a **Strict Monthly Engine** (420 steps) to ensure prec
   3. **Inherited IRA** (accelerated withdrawals beyond schedule).
   4. **401k / 403b** (taxable withdrawals, stop at `retirementMin`).
 
-### 3.3 Phase 2: Reverse Mortgage (Active-RM)
+### 3.4 Phase 2: Reverse Mortgage (Active-RM)
 
 - **Trigger:** Liquid assets depleted AND 401k hits `retirementMin`.
 - **Actions:**
@@ -155,7 +190,7 @@ The simulation logic uses a **Strict Monthly Engine** (420 steps) to ensure prec
   - All deficits are funded by drawing on the Reverse Mortgage.
   - Interest accrues monthly on the R-HELOC balance.
 
-### 3.4 Phase 3: Post-Housing (Forced Sale / End-of-Life)
+### 3.5 Phase 3: Post-Housing (Forced Sale / End-of-Life)
 
 - **Trigger:** Reverse Mortgage Balance hits the age-based **LTV Limit** (e.g., 50% at age 80).
 - **Actions:**
@@ -191,7 +226,8 @@ The simulation logic uses a **Strict Monthly Engine** (420 steps) to ensure prec
 
 ## 5. Version History
 
-- **1.3:** (Current) Identity Refactor (Primary/Spouse keys), Data Integrity Engine (Import Repair & Validation), Profile Editor with Sync Status, Taxation & Debt Linking refinements.
-- **1.2:** Strict Monthly Engine (420 steps), Consolidated Cash Flow View, Precise Birth Month Logic, RMD Cash Injection separation.
+- **1.4:** (Current) Property Planner Overhaul (Closing Cost Worksheet, Two-Stage Funding, Auto-Loan), Dynamic Balance Lookups, Sale Proceeds Logic Update.
+- **1.3:** Identity Refactor (Primary/Spouse keys), Data Integrity Engine, Profile Editor with Sync Status.
+- **1.2:** Strict Monthly Engine (420 steps), Consolidated Cash Flow View, Precise Birth Month Logic.
 - **1.1:** Added Scenario Management, AI Export/Import, Lifecycle Phases.
 - **1.0:** Baseline. Unified Cash Flow, Balance Sheet, System Reverse Mortgage.

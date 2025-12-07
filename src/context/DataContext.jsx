@@ -6,7 +6,7 @@ import { format, parseISO, isValid } from 'date-fns';
 const DataContext = createContext();
 
 // Storage key versioned for the new schema
-const STORAGE_KEY = 'ba_financial_planner_v1.3_primary_spouse';
+const STORAGE_KEY = 'ba_financial_planner_v1.4_primary_spouse';
 
 export const DataProvider = ({ children }) => {
 
@@ -32,7 +32,10 @@ export const DataProvider = ({ children }) => {
     if (isLoaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   }, [store, isLoaded]);
 
-  useEffect(() => { setIsLoaded(true); console.log("BA Financial Data Ready"); }, []);
+  useEffect(() => {
+      setIsLoaded(true);
+      console.log("BA Financial Data Ready (v1.4)");
+  }, []);
 
   // --- 3. ACCESSORS ---
   const activeId = store.meta.activeScenarioId;
@@ -87,7 +90,6 @@ export const DataProvider = ({ children }) => {
       };
 
       // 1. MIGRATE LEGACY KEYS (Dick/Jane -> Primary/Spouse)
-      // We apply this to both Scenarios and Profiles
       const fixIncomeObject = (incomeObj, contextName) => {
           if (!incomeObj) return;
 
@@ -105,7 +107,7 @@ export const DataProvider = ({ children }) => {
           // 2. CHECK MISSING FIELDS & PROMPT
           ['primary', 'spouse'].forEach(person => {
               if (incomeObj[person]) {
-                  // Birth Month (Critical for v1.3 engine)
+                  // Birth Month (Critical for v1.3+ engine)
                   if (incomeObj[person].birthMonth === undefined || incomeObj[person].birthMonth === null) {
                       const val = prompt(`Data Repair (${contextName}):\nMissing Birth Month for '${person}'.\nEnter 1-12 (Default: 1):`, "1");
                       incomeObj[person].birthMonth = parseInt(val) || 1;
@@ -281,35 +283,74 @@ export const DataProvider = ({ children }) => {
       return d;
   });
 
-  // UPDATED IMPORT FUNCTION
+  // UPDATED IMPORT FUNCTION (FIX FOR MULTI-SCENARIO RESTORE)
   const importData = (importedJson, mode = 'new') => {
-      // 1. VALIDATE AND REPAIR
       const cleanData = validateAndRepairImport(importedJson);
 
       setStore(prev => {
           const newState = cloneDeep(prev);
-          if (cleanData.profiles) newState.profiles = { ...newState.profiles, ...cleanData.profiles };
+
+          // 1. Merge Profiles (Global)
+          if (cleanData.profiles) {
+              newState.profiles = { ...newState.profiles, ...cleanData.profiles };
+          }
 
           const sourceScenarios = cleanData.scenarios || {};
-          const sourceId = cleanData.meta?.activeScenarioId || Object.keys(sourceScenarios)[0];
-          const sourceScenario = sourceScenarios[sourceId];
+          const sourceKeys = Object.keys(sourceScenarios);
 
-          if (!sourceScenario) { console.error("No valid scenario found."); return prev; }
-
-          const finalScenario = cloneDeep(sourceScenario);
-          ensureSequenceDefaults(finalScenario);
-
-          if (mode === 'overwrite_active') {
-              const targetId = newState.meta.activeScenarioId;
-              newState.scenarios[targetId].data = finalScenario.data;
-              newState.scenarios[targetId].name = finalScenario.name;
-              newState.scenarios[targetId].id = targetId;
-          } else {
-              const newId = `scen_${Date.now()}`;
-              finalScenario.id = newId;
-              newState.scenarios[newId] = finalScenario;
-              newState.meta.activeScenarioId = newId;
+          if (sourceKeys.length === 0) {
+              console.error("No valid scenarios found in import.");
+              return prev;
           }
+
+          // 2. Identify the Active Scenario ID from the backup
+          const backupActiveId = cleanData.meta?.activeScenarioId;
+          let newActiveId = null;
+
+          // MODE: OVERWRITE ACTIVE
+          if (mode === 'overwrite_active') {
+              const sourceId = backupActiveId || sourceKeys[0];
+              const sourceScenario = sourceScenarios[sourceId];
+
+              if (sourceScenario) {
+                  const finalScenario = cloneDeep(sourceScenario);
+                  ensureSequenceDefaults(finalScenario);
+
+                  const targetId = newState.meta.activeScenarioId;
+                  newState.scenarios[targetId].data = finalScenario.data;
+                  newState.scenarios[targetId].name = finalScenario.name;
+              }
+          }
+          // MODE: NEW (FULL RESTORE)
+          else {
+              // Iterate through ALL scenarios in the import file
+              sourceKeys.forEach((key, index) => {
+                  const sourceScenario = sourceScenarios[key];
+                  const finalScenario = cloneDeep(sourceScenario);
+                  ensureSequenceDefaults(finalScenario);
+
+                  // Generate a unique ID to ensure we don't collide with existing keys
+                  const newId = `scen_${Date.now()}_${index}`;
+
+                  finalScenario.id = newId;
+                  newState.scenarios[newId] = finalScenario;
+
+                  // If this matches the backup's active ID, track it
+                  if (key === backupActiveId) {
+                      newActiveId = newId;
+                  }
+                  // Fallback: If no match found yet, default to the first one imported
+                  if (!newActiveId && index === 0) {
+                      newActiveId = newId;
+                  }
+              });
+
+              // 3. Switch active scenario to the restored one (prioritizing the one that was active in backup)
+              if (newActiveId) {
+                  newState.meta.activeScenarioId = newActiveId;
+              }
+          }
+
           return newState;
       });
   };
@@ -320,7 +361,6 @@ export const DataProvider = ({ children }) => {
       if(!next.profiles) next.profiles = {};
       next.profiles[pid] = { id: pid, name, type, data: cloneDeep(data) };
 
-      // Auto-attach to sequence
       if (!next.scenarios[activeId].data[type].profileSequence) next.scenarios[activeId].data[type].profileSequence = [];
       next.scenarios[activeId].data[type].profileSequence.push({
           profileId: pid,
