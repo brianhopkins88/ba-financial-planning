@@ -62,10 +62,16 @@ export const DataProvider = ({ children }) => {
 
   // --- HELPER: ENSURE SEQUENCE VALIDITY ---
   const ensureSequenceDefaults = (scenario) => {
+      // Safety Check: Ensure structure exists to prevent crashes on legacy/broken scenarios
+      if (!scenario.data) scenario.data = {};
+      if (!scenario.data.assumptions) scenario.data.assumptions = { timing: { startYear: 2026, startMonth: 1 } };
+      if (!scenario.data.assumptions.timing) scenario.data.assumptions.timing = { startYear: 2026, startMonth: 1 };
+
       const startYear = scenario.data.assumptions.timing.startYear || 2026;
       const startMonth = scenario.data.assumptions.timing.startMonth || 1;
 
       ['income', 'expenses'].forEach(type => {
+          if (!scenario.data[type]) scenario.data[type] = {}; // Safety
           if (!scenario.data[type].profileSequence) scenario.data[type].profileSequence = [];
           if (scenario.data[type].profileSequence.length > 0) {
               scenario.data[type].profileSequence.sort((a,b) => a.startDate.localeCompare(b.startDate));
@@ -124,6 +130,9 @@ export const DataProvider = ({ children }) => {
       // Fix Scenarios
       if (fixed.scenarios) {
           Object.values(fixed.scenarios).forEach(scen => {
+              // Safety: Ensure data block exists
+              if (!scen.data) scen.data = {};
+
               // Strip AI Metadata
               delete scen.__simulation_output;
               delete scen.__assumptions_documentation;
@@ -133,7 +142,7 @@ export const DataProvider = ({ children }) => {
               if (scen.name && scen.name.includes("Jane")) scen.name = scen.name.replace("Jane", "Spouse");
 
               // Fix Income
-              if (scen.data && scen.data.income) {
+              if (scen.data.income) {
                   fixIncomeObject(scen.data.income, `Scenario: ${scen.name}`);
               }
 
@@ -314,34 +323,41 @@ export const DataProvider = ({ children }) => {
 
               if (sourceScenario) {
                   const finalScenario = cloneDeep(sourceScenario);
-                  ensureSequenceDefaults(finalScenario);
-
-                  const targetId = newState.meta.activeScenarioId;
-                  newState.scenarios[targetId].data = finalScenario.data;
-                  newState.scenarios[targetId].name = finalScenario.name;
+                  try {
+                      ensureSequenceDefaults(finalScenario);
+                      const targetId = newState.meta.activeScenarioId;
+                      newState.scenarios[targetId].data = finalScenario.data;
+                      newState.scenarios[targetId].name = finalScenario.name;
+                  } catch (err) {
+                      console.error("Failed to overwrite active scenario with imported data:", err);
+                  }
               }
           }
           // MODE: NEW (FULL RESTORE)
           else {
               // Iterate through ALL scenarios in the import file
               sourceKeys.forEach((key, index) => {
-                  const sourceScenario = sourceScenarios[key];
-                  const finalScenario = cloneDeep(sourceScenario);
-                  ensureSequenceDefaults(finalScenario);
+                  try {
+                      const sourceScenario = sourceScenarios[key];
+                      const finalScenario = cloneDeep(sourceScenario);
+                      ensureSequenceDefaults(finalScenario);
 
-                  // Generate a unique ID to ensure we don't collide with existing keys
-                  const newId = `scen_${Date.now()}_${index}`;
+                      // Generate a unique ID to ensure we don't collide with existing keys
+                      const newId = `scen_${Date.now()}_${index}`;
 
-                  finalScenario.id = newId;
-                  newState.scenarios[newId] = finalScenario;
+                      finalScenario.id = newId;
+                      newState.scenarios[newId] = finalScenario;
 
-                  // If this matches the backup's active ID, track it
-                  if (key === backupActiveId) {
-                      newActiveId = newId;
-                  }
-                  // Fallback: If no match found yet, default to the first one imported
-                  if (!newActiveId && index === 0) {
-                      newActiveId = newId;
+                      // If this matches the backup's active ID, track it
+                      if (key === backupActiveId) {
+                          newActiveId = newId;
+                      }
+                      // Fallback: If no match found yet, default to the first one imported
+                      if (!newActiveId && index === 0) {
+                          newActiveId = newId;
+                      }
+                  } catch (err) {
+                      console.warn(`Skipping malformed scenario '${key}' during import:`, err);
                   }
               });
 

@@ -2,15 +2,36 @@ import { addMonths, getYear, getMonth, format, isAfter, parseISO, isValid, diffe
 import { calculateRevolvingLoan, calculateFixedLoan } from './loan_math';
 import { calculateAssetGrowth } from './asset_math';
 
-// --- HELPERS ---
+// --- HELPER: Smart Profile Resolution ---
+// This prioritizes the local "Draft" data if the simulation is running
+// in the same period as the base profile, ensuring immediate feedback for edits.
+const getEffectiveProfile = (sequence, dateStr, profiles, localData) => {
+    // 1. If no sequence, default to local data
+    if (!sequence || sequence.length === 0) return localData;
 
-const getProfileForDate = (sequence, dateStr, profiles) => {
-    if (!sequence || !profiles) return null;
+    // 2. Find the active profile item for this simulation date
     const activeItems = sequence.filter(item => item.isActive);
     const candidates = activeItems.filter(item => item.startDate <= dateStr);
+
+    // Sort by date descending (latest start date first)
     candidates.sort((a, b) => b.startDate.localeCompare(a.startDate));
-    const match = candidates[0];
-    return match ? (profiles[match.profileId]?.data || null) : null;
+    const currentMatch = candidates[0];
+
+    if (!currentMatch) return localData; // No profile active yet, use local defaults
+
+    // 3. Determine if this is the "Base" profile (the first one in the chain)
+    // We assume the user is editing the base profile in the main view.
+    const sortedByDate = [...activeItems].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const baseItem = sortedByDate[0];
+
+    // 4. CRITICAL FIX: If the current timeline profile IS the base profile,
+    // use 'localData' (which contains your recent unsaved edits) instead of the stale store data.
+    if (baseItem && currentMatch.profileId === baseItem.profileId) {
+        return localData;
+    }
+
+    // 5. Otherwise, this is a future profile switch (e.g. Retirement Phase), load from store.
+    return profiles[currentMatch.profileId]?.data || localData;
 };
 
 const getWorkStatus = (year, activeIncomeProfile, fallbackWorkStatus) => {
@@ -181,7 +202,41 @@ export const runFinancialSimulation = (scenario, profiles) => {
             accumulatedYear = emptyAnnualData();
         }
 
-        // --- PROPERTY TRANSACTIONS ---
+        // --- STEP 1: PROPERTY SALES (Liquidity Event) ---
+        // Runs before purchases to ensure cash is available
+        Object.keys(state.properties).forEach(pid => {
+            const prop = state.properties[pid];
+            if (!prop.active) return;
+            if (prop.inputs && prop.inputs.sellDate && prop.inputs.sellDate.startsWith(monthKey)) {
+                const salePrice = prop.value;
+                const costOfSale = salePrice * 0.06;
+                let debtPaid = 0;
+                const linkedIds = prop.inputs.linkedLoanIds || (prop.inputs.linkedLoanId ? [prop.inputs.linkedLoanId] : []);
+                linkedIds.forEach(lid => {
+                    if (state.activeLoans.has(lid)) {
+                         const sched = loanScheduleMap[lid];
+                         const info = sched ? sched[monthKey] : null;
+                         const balanceToPay = info ? info.balance : 0;
+                         if (balanceToPay > 0) {
+                             debtPaid += balanceToPay;
+                             state.activeLoans.delete(lid);
+                             state.closedLoans.add(lid);
+                             events.push({ date: dateStr, text: `Loan Paid Off (Sale): ${data.loans[lid]?.name || lid}` });
+                         }
+                    }
+                });
+                const netProceeds = Math.max(0, salePrice - costOfSale - debtPaid);
+
+                // --- FIX: Redirect Proceeds to CASH ---
+                updateComponents(state, 'cash', netProceeds);
+                state.cash += netProceeds;
+
+                prop.active = false;
+                events.push({ date: dateStr, text: `Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k deposited to CASH.` });
+            }
+        });
+
+        // --- STEP 2: ASSET PURCHASES ---
         futureAssets.forEach((fa, idx) => {
             if (fa.activated) return;
             if (fa.startDateStr === monthKey) {
@@ -209,38 +264,10 @@ export const runFinancialSimulation = (scenario, profiles) => {
             }
         });
 
-        Object.keys(state.properties).forEach(pid => {
-            const prop = state.properties[pid];
-            if (!prop.active) return;
-            if (prop.inputs && prop.inputs.sellDate && prop.inputs.sellDate.startsWith(monthKey)) {
-                const salePrice = prop.value;
-                const costOfSale = salePrice * 0.06;
-                let debtPaid = 0;
-                const linkedIds = prop.inputs.linkedLoanIds || (prop.inputs.linkedLoanId ? [prop.inputs.linkedLoanId] : []);
-                linkedIds.forEach(lid => {
-                    if (state.activeLoans.has(lid)) {
-                         const sched = loanScheduleMap[lid];
-                         const info = sched ? sched[monthKey] : null;
-                         const balanceToPay = info ? info.balance : 0;
-                         if (balanceToPay > 0) {
-                             debtPaid += balanceToPay;
-                             state.activeLoans.delete(lid);
-                             state.closedLoans.add(lid);
-                             events.push({ date: dateStr, text: `Loan Paid Off (Sale): ${data.loans[lid]?.name || lid}` });
-                         }
-                    }
-                });
-                const netProceeds = Math.max(0, salePrice - costOfSale - debtPaid);
-                updateComponents(state, 'joint', netProceeds);
-                state.joint += netProceeds;
-                prop.active = false;
-                events.push({ date: dateStr, text: `Sold ${prop.name} for $${Math.round(salePrice/1000)}k. Net: $${Math.round(netProceeds/1000)}k` });
-            }
-        });
+        // Parameters - USE SMART PROFILE RESOLUTION
+        const incomeProfile = getEffectiveProfile(data.income.profileSequence, dateStr, profiles, data.income);
+        const expenseProfile = getEffectiveProfile(data.expenses.profileSequence, dateStr, profiles, data.expenses);
 
-        // Parameters
-        const incomeProfile = getProfileForDate(data.income.profileSequence, dateStr, profiles) || data.income;
-        const expenseProfile = getProfileForDate(data.expenses.profileSequence, dateStr, profiles) || data.expenses;
         const workStatus = getWorkStatus(currentYear, incomeProfile, data.income.workStatus);
         const taxRate = getTaxRate(workStatus, assumptions);
 
@@ -261,9 +288,10 @@ export const runFinancialSimulation = (scenario, profiles) => {
             assetFlows: { rmd: 0 }
         };
 
-        // --- INCOME ---
+        // --- INCOME (Using Smart Profile) ---
         const primarySalary = ((incomeProfile.primary?.netSalary || 0) * inflationMult) * workStatus.primary;
         const spouseSalary = ((incomeProfile.spouse?.netSalary || 0) * inflationMult) * workStatus.spouse;
+
         monthlyBreakdown.income.employment = (primarySalary + spouseSalary) * dt;
 
         if (incomeProfile.primary?.bonus?.month === currentMonth) {
@@ -358,11 +386,9 @@ export const runFinancialSimulation = (scenario, profiles) => {
             const info = sched ? sched[monthKey] : null;
             if (info) {
                  if (info.payment > 0) {
-                    const isLinked = !expenseProfile.linkedLoanIds || expenseProfile.linkedLoanIds.includes(lid);
-                    if (isLinked) {
-                        if (data.loans[lid].type === 'mortgage') monthlyBreakdown.expenses.impounds += info.payment;
-                        else monthlyBreakdown.expenses.otherDebt += info.payment;
-                    }
+                    // Global Debt Service
+                    if (data.loans[lid].type === 'mortgage') monthlyBreakdown.expenses.impounds += info.payment;
+                    else monthlyBreakdown.expenses.otherDebt += info.payment;
                  }
                  totalActiveLoanBalance += info.balance;
 
@@ -385,10 +411,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
             if (primaryAge >= startAge && primaryAge < startAge + 5) funMoneyAnnual = brackets[k];
         });
 
-        // --- CHECK INFLATION TOGGLE FOR FUN MONEY ---
-        // Default to TRUE if undefined (safe default)
         const shouldInflateFunMoney = data.expenses.adjustFunMoney !== false;
-
         if (funMoneyAnnual > 0) {
             const modifier = shouldInflateFunMoney ? inflationMult : 1.0;
             monthlyBreakdown.expenses.extra += (funMoneyAnnual * dt) * modifier;
@@ -401,13 +424,9 @@ export const runFinancialSimulation = (scenario, profiles) => {
         let shortfall = 0;
 
         if (netCashFlow >= 0) {
-            const cashMax = assumptions.thresholds?.cashMax || 30000;
-            const cashRoom = cashMax - state.cash;
-            if (netCashFlow <= cashRoom) { updateComponents(state, 'cash', netCashFlow); state.cash += netCashFlow; }
-            else {
-                updateComponents(state, 'cash', cashRoom); state.cash += cashRoom;
-                updateComponents(state, 'joint', netCashFlow - cashRoom); state.joint += (netCashFlow - cashRoom);
-            }
+            // Surplus logic: All surplus to Cash
+            updateComponents(state, 'cash', netCashFlow);
+            state.cash += netCashFlow;
         } else {
             let needed = Math.abs(netCashFlow);
             const cashMin = assumptions.thresholds?.cashMin || 15000;
