@@ -386,7 +386,7 @@ export const runFinancialSimulation = (scenario, profiles) => {
         });
 
         // --- CHECK INFLATION TOGGLE FOR FUN MONEY ---
-        // Default to TRUE if undefined (safe default), check explicit false
+        // Default to TRUE if undefined (safe default)
         const shouldInflateFunMoney = data.expenses.adjustFunMoney !== false;
 
         if (funMoneyAnnual > 0) {
