@@ -11,6 +11,7 @@ import CashFlow from './views/cashflow';
 import Assets from './views/assets';
 import Ledger from './views/ledger';
 import ScenarioBuilder from './views/scenarioBuilder';
+import ScenarioCompare from './views/comparison';
 
 const Dashboard = () => {
     // Lazy load the Dashboard to avoid circular dependency issues during init
@@ -96,6 +97,7 @@ const AppShell = () => {
       case 'assumptions': return <Assumptions />;
       case 'ledger': return <Ledger />;
       case 'builder': return <ScenarioBuilder />;
+      case 'compare': return <ScenarioCompare />;
       default: return <Dashboard />;
     }
   };

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { calculateAssetGrowth } from '../utils/asset_math';
 import { runFinancialSimulation } from '../utils/financial_engine';
-import { Plus, Trash2, TrendingUp, Home, DollarSign, PiggyBank, Briefcase, Calendar, PenTool, Link, ChevronDown, ChevronRight, X, ArrowRight, Info, Settings, Lock } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, Home, DollarSign, PiggyBank, Briefcase, Calendar, PenTool, Link, ChevronDown, ChevronRight, X, ArrowRight, Info, Settings, Lock, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { NewConstructionPlanner, HomePurchasePlanner } from '../components/PropertyPlanner';
 import { isAfter, parseISO, addYears, format, getYear, isValid } from 'date-fns';
@@ -108,6 +108,7 @@ export default function Assets() {
 
   const [selectedId, setSelectedId] = useState(null);
   const [showPlanning, setShowPlanning] = useState(false);
+  const [inspectorExpandedYear, setInspectorExpandedYear] = useState(null);
 
   const grouped = useMemo(() => {
     const g = { retirement: [], inherited: [], joint: [], cash: [], property: [] };
@@ -119,6 +120,10 @@ export default function Assets() {
   const activeAsset = accounts[selectedId] || Object.values(accounts)[0];
   const activeId = activeAsset?.id;
   const linkedIds = activeScenario.links?.assets || Object.keys(accounts);
+
+  useEffect(() => {
+      setInspectorExpandedYear(null);
+  }, [activeId]);
 
   useEffect(() => {
       if (activeAsset?.type === 'property') {
@@ -164,6 +169,68 @@ export default function Assets() {
 
   // --- PROJECTION ENGINE ---
   const simulation = useMemo(() => runFinancialSimulation(activeScenario, store.profiles), [activeScenario, store.profiles]);
+
+  const balanceInspectorData = useMemo(() => {
+     if (!simulation?.timeline || !activeAsset) return { annual: [] };
+     const key = activeAsset.type === 'property' ? 'property' : activeAsset.type;
+     const annualMap = {};
+     const monthName = (m) => new Date(2000, m - 1, 1).toLocaleString('default', { month: 'short' });
+
+     let prevBalance = null;
+     let prevFlow = null;
+     let prevYear = null;
+
+     simulation.timeline.forEach(row => {
+         const year = row.year;
+         const balance = row.balances?.[key] ?? 0;
+         const flow = row.flows?.[key] || { deposits: 0, withdrawals: 0, growth: 0 };
+         const month = row.month || 0;
+
+         if (!annualMap[year]) {
+             annualMap[year] = {
+                 year,
+                 startBalance: balance,
+                 endBalance: balance,
+                 deposits: 0,
+                 withdrawals: 0,
+                 growth: 0,
+                 months: []
+             };
+             prevBalance = balance;
+             prevFlow = flow;
+             prevYear = year;
+             return;
+         }
+
+         // compute month deltas using cumulative annual flows
+         const flowDelta = {
+             deposits: flow.deposits - (prevFlow?.deposits || 0),
+             withdrawals: flow.withdrawals - (prevFlow?.withdrawals || 0),
+             growth: flow.growth - (prevFlow?.growth || 0),
+         };
+         const monthEntry = {
+             month,
+             monthLabel: month === 0 ? 'Start' : monthName(month),
+             startBalance: prevBalance,
+             deposits: flowDelta.deposits,
+             withdrawals: flowDelta.withdrawals,
+             growth: flowDelta.growth,
+             endBalance: balance
+         };
+         annualMap[year].months.push(monthEntry);
+         annualMap[year].deposits += flowDelta.deposits;
+         annualMap[year].withdrawals += flowDelta.withdrawals;
+         annualMap[year].growth += flowDelta.growth;
+         annualMap[year].endBalance = balance;
+
+         prevBalance = balance;
+         prevFlow = flow;
+         prevYear = year;
+     });
+
+     const annual = Object.values(annualMap).sort((a,b) => a.year - b.year);
+     return { annual };
+  }, [simulation, activeAsset]);
 
   const projectionData = useMemo(() => {
      if (!activeAsset) return [];
@@ -441,6 +508,84 @@ export default function Assets() {
                       {activeAsset.type === 'retirement' && (<GlobalRuleInput label="Safety Floor (RM Trigger)" value={thresholds.retirementMin} onChange={(v) => handleThresholdUpdate('retirementMin', v)} description="If 401k falls to this level, Reverse Mortgage activates." />)}
                   </div>
               )}
+
+              {/* Balance Inspector */}
+              <div className="mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-bold text-slate-700 flex items-center gap-2"><FileText size={16}/> Balance Inspector</h3>
+                      <div className="text-[11px] text-slate-500">Yearly summary with month-by-month drilldown. Waterfall view removed per request.</div>
+                  </div>
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                          <thead className="bg-slate-50 text-xs text-slate-500 uppercase font-bold">
+                              <tr>
+                                  <th className="px-3 py-2 text-left">Year</th>
+                                  <th className="px-3 py-2 text-right">Start</th>
+                                  <th className="px-3 py-2 text-right text-blue-700">Deposits</th>
+                                  <th className="px-3 py-2 text-right text-red-600">Withdrawals</th>
+                                  <th className="px-3 py-2 text-right text-emerald-600">Growth</th>
+                                  <th className="px-3 py-2 text-right">End</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                              {balanceInspectorData.annual.map(row => {
+                                  const isOpen = inspectorExpandedYear === row.year;
+                                  return (
+                                      <React.Fragment key={row.year}>
+                                          <tr className="hover:bg-blue-50/40 cursor-pointer" onClick={() => setInspectorExpandedYear(isOpen ? null : row.year)}>
+                                              <td className="px-3 py-2 font-bold text-slate-700 flex items-center gap-2">
+                                                  {isOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                                                  {row.year}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono text-slate-600">${Math.round(row.startBalance || 0).toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-right font-mono text-blue-700 font-semibold">${Math.round(row.deposits || 0).toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-right font-mono text-red-600 font-semibold">-${Math.round(row.withdrawals || 0).toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-right font-mono text-emerald-600 font-semibold">${Math.round(row.growth || 0).toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">${Math.round(row.endBalance || 0).toLocaleString()}</td>
+                                          </tr>
+                                          {isOpen && row.months.length > 0 && (
+                                              <tr>
+                                                  <td colSpan={6} className="px-3 pb-3">
+                                                      <div className="overflow-x-auto">
+                                                          <table className="w-full text-xs">
+                                                              <thead className="bg-slate-100 text-[10px] text-slate-500 uppercase font-bold">
+                                                                  <tr>
+                                                                      <th className="px-2 py-1 text-left">Month</th>
+                                                                      <th className="px-2 py-1 text-right">Start</th>
+                                                                      <th className="px-2 py-1 text-right text-blue-700">Deposits</th>
+                                                                      <th className="px-2 py-1 text-right text-red-600">Withdrawals</th>
+                                                                      <th className="px-2 py-1 text-right text-emerald-600">Growth</th>
+                                                                      <th className="px-2 py-1 text-right">End</th>
+                                                                  </tr>
+                                                              </thead>
+                                                              <tbody className="divide-y divide-slate-100">
+                                                                  {row.months.map(m => (
+                                                                      <tr key={`${row.year}-${m.month}`} className="hover:bg-blue-50/50">
+                                                                          <td className="px-2 py-1 text-left font-semibold text-slate-700">{m.monthLabel}</td>
+                                                                          <td className="px-2 py-1 text-right font-mono text-slate-600">${Math.round(m.startBalance || 0).toLocaleString()}</td>
+                                                                          <td className="px-2 py-1 text-right font-mono text-blue-700">${Math.round(m.deposits || 0).toLocaleString()}</td>
+                                                                          <td className="px-2 py-1 text-right font-mono text-red-600">-${Math.round(m.withdrawals || 0).toLocaleString()}</td>
+                                                                          <td className="px-2 py-1 text-right font-mono text-emerald-600">${Math.round(m.growth || 0).toLocaleString()}</td>
+                                                                          <td className="px-2 py-1 text-right font-mono font-bold text-slate-800">${Math.round(m.endBalance || 0).toLocaleString()}</td>
+                                                                      </tr>
+                                                                  ))}
+                                                              </tbody>
+                                                          </table>
+                                                      </div>
+                                                  </td>
+                                              </tr>
+                                          )}
+                                      </React.Fragment>
+                                  );
+                              })}
+                              {balanceInspectorData.annual.length === 0 && (
+                                  <tr><td colSpan={6} className="px-3 py-3 text-center text-slate-400 text-xs">No timeline data available.</td></tr>
+                              )}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+
 
               {activeAsset.type === 'inherited' && (
                   <div className="mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200">

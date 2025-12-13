@@ -117,6 +117,160 @@ const MonthPicker = ({ value, onChange }) => {
   );
 };
 
+const PropertySubAccordion = ({ title, total, children, defaultOpen = false, open, onToggle }) => {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isControlled = typeof open === 'boolean';
+  const isOpen = isControlled ? open : internalOpen;
+  const toggle = () => {
+    if (isControlled && onToggle) onToggle(!open);
+    else setInternalOpen(!internalOpen);
+  };
+
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-100 cursor-pointer hover:bg-slate-200 transition-colors" onClick={toggle}>
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">{isOpen ? <ChevronDown size={16}/> : <ChevronRight size={16}/>} {title}</div>
+        {total !== undefined && <span className="text-[11px] font-mono font-bold text-slate-600">${Math.round(total || 0).toLocaleString()}</span>}
+      </div>
+      {isOpen && <div className="p-3 bg-white">{children}</div>}
+    </div>
+  );
+};
+
+const PropertyExpensesCard = ({ detail, propertyLabel, subOpen, onToggleSub }) => {
+  const [localSubOpen, setLocalSubOpen] = useState({ mortgage: true, other: false });
+  const openState = subOpen || localSubOpen;
+  const toggleSub = (key, next) => {
+      if (onToggleSub) onToggleSub(key, next);
+      else setLocalSubOpen(prev => ({ ...prev, [key]: typeof next === 'boolean' ? next : !prev[key] }));
+  };
+
+  const fmt = (v) => `$${Math.round(v || 0).toLocaleString()}`;
+  const mortgageItems = detail.mortgageItems || [];
+  const impoundItems = detail.impoundItems || [];
+  const otherItems = detail.otherItems || [];
+  const mortgageTotal = detail.mortgage ?? mortgageItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const impoundTotal = detail.impounds ?? impoundItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const taxTotal = impoundItems.filter(i => i.type === 'tax').reduce((sum, item) => sum + (item.amount || 0), 0);
+  const insuranceTotal = impoundItems.filter(i => i.type === 'insurance').reduce((sum, item) => sum + (item.amount || 0), 0);
+  const otherImpounds = impoundItems.filter(i => i.type !== 'tax' && i.type !== 'insurance');
+  const hasMortgage = mortgageTotal > 0;
+  const hasImpounds = impoundItems.length > 0 || impoundTotal > 0;
+
+  return (
+    <div className="p-3 rounded border border-slate-100 bg-slate-50 space-y-2">
+      <div className="flex justify-between items-center">
+        <div className="font-bold text-slate-700">{detail.name}</div>
+        <div className="text-[11px] uppercase text-slate-400">Month: {propertyLabel}</div>
+      </div>
+
+      <PropertySubAccordion
+        title="Mortgage & Impounds"
+        total={mortgageTotal + impoundTotal}
+        defaultOpen={true}
+        open={openState.mortgage}
+        onToggle={(next) => toggleSub('mortgage', next)}
+      >
+        <div className="space-y-2 text-sm text-slate-600">
+            {hasMortgage ? (
+                <>
+                    <div className="flex justify-between items-center">
+                        <span>Mortgage Payment</span>
+                        <span className="font-mono font-bold text-blue-700">{fmt(mortgageTotal)}</span>
+                    </div>
+                    {mortgageItems.length > 0 && (
+                        <div className="pl-3 space-y-1 text-xs text-slate-500 border-l border-slate-100">
+                            {mortgageItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center">
+                                    <span>{item.name || 'Linked Mortgage'}</span>
+                                    <div className="text-right">
+                                        <div className="font-mono font-bold text-slate-700">{fmt(item.amount)}</div>
+                                        {item.extraPayment > 0 && <div className="text-[10px] text-emerald-600">Includes +{fmt(item.extraPayment)} principal</div>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            ) : (
+                <div className="text-xs text-slate-400 italic">No linked mortgage payment this month.</div>
+            )}
+
+            <div className="flex justify-between items-center">
+                <span>Property Tax</span>
+                <span className="font-mono font-bold text-blue-700">{fmt(taxTotal)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+                <span>Property Insurance</span>
+                <span className="font-mono font-bold text-blue-700">{fmt(insuranceTotal)}</span>
+            </div>
+
+            {otherImpounds.length > 0 && (
+                <div className="pt-1 border-t border-slate-100">
+                    <div className="text-[11px] uppercase text-slate-400 mb-1">Other Impounds</div>
+                    <div className="space-y-1">
+                        {otherImpounds.map(item => (
+                            <div key={item.id} className="flex justify-between text-xs text-slate-600">
+                                <span>{item.name || 'Impound Item'}</span>
+                                <span className="font-mono font-bold text-slate-700">{fmt(item.amount)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {!hasImpounds && (
+                <div className="text-xs text-slate-400 italic">No impounds loaded for this month.</div>
+            )}
+        </div>
+      </PropertySubAccordion>
+
+      <PropertySubAccordion
+        title="Other Expenses"
+        total={detail.other}
+        defaultOpen={false}
+        open={openState.other}
+        onToggle={(next) => toggleSub('other', next)}
+      >
+        {otherItems.length === 0 ? (
+            <div className="text-xs text-slate-400 italic">No other property expenses for {propertyLabel}.</div>
+        ) : (
+            <div className="space-y-1 text-sm text-slate-600">
+                {otherItems.map(item => (
+                    <div key={item.id} className="flex justify-between">
+                        <span>{item.name || 'Property Expense'}</span>
+                        <span className="font-mono font-bold text-blue-700">{fmt(item.amount)}</span>
+                    </div>
+                ))}
+            </div>
+        )}
+      </PropertySubAccordion>
+    </div>
+  );
+};
+
+const StartProfilePill = ({ label, profile, missing, onEdit }) => {
+  const name = profile?.name || 'Not set';
+  const startDate = profile?.startDate || 'Not set';
+  const stateColor = missing ? 'text-red-600 bg-red-50 border-red-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200';
+  const stateText = missing ? 'Missing start profile' : `Starts ${startDate}`;
+  return (
+    <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border ${stateColor}`}>
+      <div>
+        <div className="text-[10px] uppercase font-bold text-slate-500">{label}</div>
+        <div className="text-sm font-semibold text-slate-800">{name}</div>
+        <div className="text-[11px] text-slate-500">{stateText}</div>
+      </div>
+      <button
+        onClick={onEdit}
+        className="text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:border-blue-400 hover:text-blue-600 transition-colors"
+      >
+        Edit timeline
+      </button>
+    </div>
+  );
+};
+
 // --- ANALYSIS TABLES (Unchanged) ---
 const NetCashFlowSummary = ({ activeScenario, store, simulation }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -289,8 +443,8 @@ const MonthlyBurnPanel = ({ activeScenario, store, simulation, monthValue, prope
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-slate-50 border border-slate-200 rounded p-4 space-y-2">
                 <Row label="Recurring Bills & Living" value={selected.monthlyBurn?.recurring} drillKey="recurring" />
-                <Row label="Home: Mortgage + Impounds" value={homeFixed} drillKey="homeFixed" />
-                <Row label="Home: HOA / Maintenance" value={homeOther} drillKey="homeOther" />
+                <Row label="Home: Mortgage + Impounds" value={homeFixed} drillKey="propertyMortgage" />
+                <Row label="Home: HOA / Maintenance" value={homeOther} drillKey="propertyOther" />
                 <div className="flex justify-between text-sm border-t border-slate-200 pt-2">
                     <span className="text-slate-600 font-semibold">Home Subtotal</span>
                     <span className="font-bold text-slate-800">{formatMoney(homeTotal)}</span>
@@ -542,6 +696,7 @@ const ExpensesEditor = ({ editData, actions, otherLoans, totalBills, totalLiving
     const propertyTotals = propertyCosts?.totals || { mortgage: 0, impounds: 0, other: 0 };
     const propertyDetails = propertyCosts?.details || [];
     const propertyLabel = homeMonthLabel || format(simulationDate, 'yyyy-MM');
+    const propertyTotalAll = (propertyTotals.mortgage || 0) + (propertyTotals.impounds || 0) + (propertyTotals.other || 0);
 
     return (
         <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
@@ -549,51 +704,21 @@ const ExpensesEditor = ({ editData, actions, otherLoans, totalBills, totalLiving
                 <div className="space-y-1">{editData.bills.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('bills', idx, f, v)} onDelete={() => removeBill('bills', idx)} />))}</div>
             </Accordion>
 
-            <Accordion title="Mortgage & Impounds" total={propertyTotals.mortgage + propertyTotals.impounds} defaultOpen={true}>
+            <Accordion title="Property Expenses" total={propertyTotalAll} defaultOpen={true}>
                 <div className="space-y-2">
                     {propertyDetails.length === 0 && (
                         <div className="text-sm text-slate-400 italic">
-                            No property carrying costs found for {propertyLabel}. Add mortgage links and impounds on the property in Assets & Property.
+                            No property carrying costs found for {propertyLabel}. Add mortgage links, impounds, and other expenses on the property in Assets & Property.
                         </div>
                     )}
                     {propertyDetails.map(detail => (
-                        <div key={detail.id} className="p-3 rounded border border-slate-100 bg-slate-50">
-                            <div className="flex justify-between items-center">
-                                <div className="font-bold text-slate-700">{detail.name}</div>
-                                <div className="text-[11px] uppercase text-slate-400">Month: {propertyLabel}</div>
-                            </div>
-                            <div className="flex justify-between text-sm text-slate-600 mt-1">
-                                <span>Mortgage + Impounds</span>
-                                <span className="font-mono font-bold text-blue-700">${Math.round((detail.mortgage || 0) + (detail.impounds || 0)).toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between text-[11px] text-slate-500"><span>Mortgage</span><span className="font-mono">${Math.round(detail.mortgage || 0).toLocaleString()}</span></div>
-                            <div className="flex justify-between text-[11px] text-slate-500"><span>Impounds</span><span className="font-mono">${Math.round(detail.impounds || 0).toLocaleString()}</span></div>
-                        </div>
+                        <PropertyExpensesCard
+                            key={detail.id}
+                            detail={detail}
+                            propertyLabel={propertyLabel}
+                        />
                     ))}
-                    <div className="text-[11px] text-slate-400">Edit mortgage links and impounds in Assets → Property.</div>
-                </div>
-            </Accordion>
-
-            <Accordion title="Home Expenses" total={propertyTotals.other} defaultOpen={false}>
-                <div className="space-y-2">
-                    {propertyDetails.length === 0 && (
-                        <div className="text-sm text-slate-400 italic">
-                            No HOA/maintenance costs loaded for {propertyLabel}. Add them on the property card in Assets & Property.
-                        </div>
-                    )}
-                    {propertyDetails.map(detail => (
-                        <div key={detail.id} className="p-3 rounded border border-slate-100 bg-slate-50">
-                            <div className="flex justify-between items-center">
-                                <div className="font-bold text-slate-700">{detail.name}</div>
-                                <div className="text-[11px] uppercase text-slate-400">Month: {propertyLabel}</div>
-                            </div>
-                            <div className="flex justify-between text-sm text-slate-600 mt-1">
-                                <span>HOA / Maintenance</span>
-                                <span className="font-mono font-bold text-blue-700">${Math.round(detail.other || 0).toLocaleString()}</span>
-                            </div>
-                        </div>
-                    ))}
-                    <div className="text-[11px] text-slate-400">Edit HOA/maintenance in Assets → Property.</div>
+                    <div className="text-[11px] text-slate-400">Edit property-linked mortgage, impounds, and HOA/maintenance in Assets → Property.</div>
                 </div>
             </Accordion>
             <Accordion title="Living Expenses" total={totalLiving} defaultOpen={false} onAdd={() => addBill('living')}><div className="space-y-1">{editData.living.map((item, idx) => (<BillRow key={idx} item={item} onChange={(f, v) => updateBill('living', idx, f, v)} onDelete={() => removeBill('living', idx)} />))}</div></Accordion>
@@ -653,57 +778,74 @@ const OverviewExpenseQuickEdit = ({ editData, actions, otherLoans, totalBills, t
     const propertyTotals = propertyCosts?.totals || { mortgage: 0, impounds: 0, other: 0 };
     const propertyDetails = propertyCosts?.details || [];
     const propertyLabel = homeMonthLabel || format(simulationDate, 'yyyy-MM');
+    const propertyTotalAll = (propertyTotals.mortgage || 0) + (propertyTotals.impounds || 0) + (propertyTotals.other || 0);
 
     const billsRef = useRef(null);
     const livingRef = useRef(null);
-    const homeFixedRef = useRef(null);
-    const homeOtherRef = useRef(null);
+    const propertyRef = useRef(null);
     const debtRef = useRef(null);
     const extrasRef = useRef(null);
 
     const [openSections, setOpenSections] = useState({
         bills: true,
         living: false,
-        homeFixed: true,
-        homeOther: false,
+        property: true,
         debt: false,
         extras: false
     });
+    const [propertySubOpen, setPropertySubOpen] = useState({ mortgage: true, other: false });
 
     const scrollToSection = useCallback((key) => {
-        const refMap = { bills: billsRef, living: livingRef, homeFixed: homeFixedRef, homeOther: homeOtherRef, debt: debtRef, extras: extrasRef };
-        setOpenSections(prev => ({ ...prev, [key]: true }));
+        const refMap = { bills: billsRef, living: livingRef, property: propertyRef, propertyMortgage: propertyRef, propertyOther: propertyRef, debt: debtRef, extras: extrasRef };
+        if (key.startsWith('property')) {
+            setOpenSections(prev => ({ ...prev, property: true }));
+            if (key === 'propertyMortgage') setPropertySubOpen(prev => ({ ...prev, mortgage: true }));
+            if (key === 'propertyOther') setPropertySubOpen(prev => ({ ...prev, other: true }));
+        } else {
+            setOpenSections(prev => ({ ...prev, [key]: true }));
+        }
         const ref = refMap[key]?.current;
         if (ref) ref.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, [billsRef, livingRef, homeFixedRef, homeOtherRef, debtRef, extrasRef]);
+    }, [billsRef, livingRef, propertyRef, debtRef, extrasRef]);
 
     useEffect(() => {
         if (!drillSignal?.target) return;
         const map = {
             recurring: ['bills', 'living'],
-            homeFixed: ['homeFixed'],
-            homeOther: ['homeOther'],
+            homeFixed: ['property', 'propertyMortgage'],
+            homeOther: ['property', 'propertyOther'],
+            propertyMortgage: ['property', 'propertyMortgage'],
+            propertyOther: ['property', 'propertyOther'],
             debt: ['debt'],
             extras: ['extras']
         };
         const targets = map[drillSignal.target] || [drillSignal.target];
         setOpenSections(prev => {
             const next = { ...prev };
-            targets.forEach(k => { next[k] = true; });
+            targets.forEach(k => {
+                if (k === 'propertyMortgage' || k === 'propertyOther') next.property = true;
+                else next[k] = true;
+            });
             return next;
         });
-        const refMap = { bills: billsRef, living: livingRef, homeFixed: homeFixedRef, homeOther: homeOtherRef, debt: debtRef, extras: extrasRef };
+        if (targets.includes('propertyMortgage')) setPropertySubOpen(prev => ({ ...prev, mortgage: true }));
+        if (targets.includes('propertyOther')) setPropertySubOpen(prev => ({ ...prev, other: true }));
+        const refMap = { bills: billsRef, living: livingRef, property: propertyRef, debt: debtRef, extras: extrasRef };
         const firstRef = refMap[targets[0]];
         if (firstRef?.current) setTimeout(() => firstRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-    }, [drillSignal, billsRef, livingRef, homeFixedRef, homeOtherRef, debtRef, extrasRef]);
+    }, [drillSignal, billsRef, livingRef, propertyRef, debtRef, extrasRef]);
 
     const quickLinks = [
         { key: 'bills', label: 'Recurring Bills' },
-        { key: 'homeFixed', label: 'Mortgage + Impounds' },
-        { key: 'homeOther', label: 'HOA / Maint' },
+        { key: 'living', label: 'Living Essentials' },
+        { key: 'property', label: 'Property Expenses' },
         { key: 'debt', label: 'Other Liabilities' },
         { key: 'extras', label: 'Discretionary / One-Offs' },
     ];
+
+    const handleTogglePropertySub = useCallback((key, next) => {
+        setPropertySubOpen(prev => ({ ...prev, [key]: typeof next === 'boolean' ? next : !prev[key] }));
+    }, []);
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
@@ -761,64 +903,30 @@ const OverviewExpenseQuickEdit = ({ editData, actions, otherLoans, totalBills, t
                 </div>
 
                 <div className="space-y-4">
-                    <div ref={homeFixedRef}>
+                    <div ref={propertyRef}>
                         <Accordion
-                            title="Mortgage & Impounds (from Properties)"
-                            total={propertyTotals.mortgage + propertyTotals.impounds}
+                            title="Property Expenses"
+                            total={propertyTotalAll}
                             defaultOpen={true}
-                            open={openSections.homeFixed}
-                            onToggle={(next) => setOpenSections(prev => ({ ...prev, homeFixed: typeof next === 'boolean' ? next : !prev.homeFixed }))}
+                            open={openSections.property}
+                            onToggle={(next) => setOpenSections(prev => ({ ...prev, property: typeof next === 'boolean' ? next : !prev.property }))}
                         >
                             <div className="space-y-2">
                                 {propertyDetails.length === 0 && (
                                     <div className="text-sm text-slate-400 italic">
-                                        No property carrying costs found for {propertyLabel}. Add mortgage links and impounds on the property in Assets & Property.
+                                        No property carrying costs found for {propertyLabel}. Add mortgage links, impounds, and other expenses on the property in Assets & Property.
                                     </div>
                                 )}
                                 {propertyDetails.map(detail => (
-                                    <div key={detail.id} className="p-3 rounded border border-slate-100 bg-slate-50">
-                                        <div className="flex justify-between items-center">
-                                            <div className="font-bold text-slate-700">{detail.name}</div>
-                                            <div className="text-[11px] uppercase text-slate-400">Month: {propertyLabel}</div>
-                                        </div>
-                                        <div className="flex justify-between text-sm text-slate-600 mt-1">
-                                            <span>Mortgage + Impounds</span>
-                                            <span className="font-mono font-bold text-blue-700">${Math.round((detail.mortgage || 0) + (detail.impounds || 0)).toLocaleString()}</span>
-                                        </div>
-                                    </div>
+                                    <PropertyExpensesCard
+                                        key={detail.id}
+                                        detail={detail}
+                                        propertyLabel={propertyLabel}
+                                        subOpen={propertySubOpen}
+                                        onToggleSub={handleTogglePropertySub}
+                                    />
                                 ))}
-                                <div className="text-[11px] text-slate-400">Edit mortgage links and impounds in Assets → Property.</div>
-                            </div>
-                        </Accordion>
-                    </div>
-
-                    <div ref={homeOtherRef}>
-                        <Accordion
-                            title="HOA / Maintenance (from Properties)"
-                            total={propertyTotals.other}
-                            defaultOpen={false}
-                            open={openSections.homeOther}
-                            onToggle={(next) => setOpenSections(prev => ({ ...prev, homeOther: typeof next === 'boolean' ? next : !prev.homeOther }))}
-                        >
-                            <div className="space-y-2">
-                                {propertyDetails.length === 0 && (
-                                    <div className="text-sm text-slate-400 italic">
-                                        No HOA/maintenance costs loaded for {propertyLabel}. Add them on the property card in Assets & Property.
-                                    </div>
-                                )}
-                                {propertyDetails.map(detail => (
-                                    <div key={detail.id} className="p-3 rounded border border-slate-100 bg-slate-50">
-                                        <div className="flex justify-between items-center">
-                                            <div className="font-bold text-slate-700">{detail.name}</div>
-                                            <div className="text-[11px] uppercase text-slate-400">Month: {propertyLabel}</div>
-                                        </div>
-                                        <div className="flex justify-between text-sm text-slate-600 mt-1">
-                                            <span>HOA / Maintenance</span>
-                                            <span className="font-mono font-bold text-blue-700">${Math.round(detail.other || 0).toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                                <div className="text-[11px] text-slate-400">Edit HOA/maintenance in Assets → Property.</div>
+                                <div className="text-[11px] text-slate-400">Edit property-linked mortgage, impounds, and HOA/maintenance in Assets → Property.</div>
                             </div>
                         </Accordion>
                     </div>
@@ -967,7 +1075,10 @@ const ProfileManager = ({ type, profiles, sequence, actions, globalStartDateStr 
         <div className="mb-6 bg-slate-50 rounded-lg border border-slate-200 p-4">
              <div className="flex justify-between items-center mb-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase">{type} Profile Sequence</h3>
-                <div className="text-[10px] text-slate-400 italic">Latest start date supersedes older ones</div>
+                <div className="text-[10px] text-slate-400 italic text-right">
+                    <div>Latest start date supersedes older ones.</div>
+                    <div>Ensure one profile is active at scenario start ({globalStartDateStr}).</div>
+                </div>
              </div>
              <div className="space-y-2">
                  {availableProfiles.length === 0 && <div className="text-sm text-slate-400 italic">No saved profiles found.</div>}
@@ -997,6 +1108,12 @@ export default function CashFlow() {
   const [viewTab, setViewTab] = useState('overview'); // 'overview' | 'projections' | 'expenses' | 'income'
   const [showProfileMgr, setShowProfileMgr] = useState(false);
   const [drillSignal, setDrillSignal] = useState(null);
+  const openProfileManagerFor = useCallback((type) => {
+      setActiveTab(type);
+      setViewTab(type);
+      setShowProfileMgr(true);
+  }, []);
+  const prevActiveTabRef = useRef(activeTab);
 
   // State to track which profile ID is currently "Loaded" in the editor
   const [editingProfileId, setEditingProfileId] = useState(null);
@@ -1024,6 +1141,22 @@ export default function CashFlow() {
   const scenarioStartDate = useMemo(() => new Date(globalStart.startYear, globalStart.startMonth - 1, 1), [globalStart.startYear, globalStart.startMonth]);
   const simulation = useMemo(() => runFinancialSimulation(activeScenario, store.profiles, store.registry), [activeScenario, store.profiles, store.registry]);
   const savedProfileSelections = activeScenario.data.ui?.cashflow?.selectedProfiles || {};
+  const getStartProfileForScenario = useCallback((type) => {
+      const seq = activeScenario.links?.profiles?.[type] || activeScenario.data?.[type]?.profileSequence || [];
+      const activeSeq = seq.filter(item => item.isActive && item.startDate);
+      if (activeSeq.length === 0) return null;
+      const sorted = [...activeSeq].sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const firstOnOrBefore = sorted.find(item => item.startDate <= globalStartDateStr) || sorted[0];
+      const profile = store.profiles[firstOnOrBefore.profileId];
+      return {
+          ...firstOnOrBefore,
+          name: profile?.name || firstOnOrBefore.profileId || 'Not set'
+      };
+  }, [activeScenario.links?.profiles, activeScenario.data, globalStartDateStr, store.profiles]);
+  const startExpenseProfile = getStartProfileForScenario('expenses');
+  const startIncomeProfile = getStartProfileForScenario('income');
+  const hasStartExpenseProfile = !!(startExpenseProfile && startExpenseProfile.startDate && startExpenseProfile.startDate <= globalStartDateStr);
+  const hasStartIncomeProfile = !!(startIncomeProfile && startIncomeProfile.startDate && startIncomeProfile.startDate <= globalStartDateStr);
 
   useEffect(() => {
       if (viewTab === 'income' && activeTab !== 'income') {
@@ -1055,14 +1188,19 @@ export default function CashFlow() {
       return store.profiles[effectiveItem.profileId] ? { ...store.profiles[effectiveItem.profileId], ...effectiveItem } : null;
   }, [activeScenario, activeTab, simulationDate, store.profiles]);
 
-  // Sync editingProfileId to saved selection or timeline active profile
+  // Sync editingProfileId to saved selection or timeline active profile when switching tabs or if none is set
   useEffect(() => {
       const cached = savedProfileSelections[activeTab];
       const fallback = timelineActiveProfile?.id;
       const nextId = cached || fallback || null;
-      if (nextId && editingProfileId !== nextId) {
+      const tabChanged = prevActiveTabRef.current !== activeTab;
+
+      // Only override on tab switch, or if nothing is selected yet
+      if ((tabChanged || !editingProfileId) && nextId && editingProfileId !== nextId) {
           setEditingProfileId(nextId);
       }
+
+      if (tabChanged) prevActiveTabRef.current = activeTab;
   }, [activeTab, savedProfileSelections, timelineActiveProfile, editingProfileId]);
 
   // Persist selected profile per tab so it survives navigation
@@ -1097,6 +1235,18 @@ export default function CashFlow() {
       return d;
   }, [burnDate, simulationDate]);
 
+  const propertySellDateByLoanId = useMemo(() => {
+      const map = {};
+      Object.values(activeScenario.data.assets.accounts || {}).forEach(asset => {
+          if (asset.type !== 'property') return;
+          const sellKey = asset.inputs?.sellDate ? asset.inputs.sellDate.substring(0, 7) : null;
+          if (!sellKey) return;
+          (asset.inputs?.linkedLoanIds || []).forEach(id => { map[id] = sellKey; });
+          if (asset.inputs?.linkedLoanId) map[asset.inputs.linkedLoanId] = sellKey;
+      });
+      return map;
+  }, [activeScenario.data.assets.accounts]);
+
   // Keep the planning month in sync with the model date when it changes elsewhere
   useEffect(() => {
       if (simulationDate && (!burnDate || format(burnDate, 'yyyy-MM') !== format(simulationDate, 'yyyy-MM'))) {
@@ -1122,6 +1272,8 @@ export default function CashFlow() {
   const getLoanSnapshotForMonth = (loan, monthKey) => {
       const entry = loanCalculations[loan.id];
       if (!entry) return null;
+      const cutoff = propertySellDateByLoanId[loan.id];
+      if (cutoff && monthKey > cutoff) return null;
       const { calc, strategy } = entry;
       const row = calc.schedule.find(r => r.date === monthKey);
       if (!row) return null;
@@ -1168,47 +1320,53 @@ export default function CashFlow() {
       const monthDate = parseISO(`${monthKey}-01`);
       if (!isValid(monthDate)) return { totals: { mortgage: 0, impounds: 0, other: 0 }, details: [], hasActiveProperty: false };
 
-      const inflationRate = assumptions.inflation?.general || 0.025;
-      const propTaxRate = assumptions.inflation?.propertyTax || 0.02;
-      const propInsRate = assumptions.inflation?.propertyInsurance || inflationRate;
-      const elapsedYears = differenceInMonths(monthDate, scenarioStartDate) / 12;
-      const inflationMult = Math.pow(1 + inflationRate, elapsedYears);
-      const propTaxMult = Math.pow(1 + propTaxRate, elapsedYears);
-      const propInsMult = Math.pow(1 + propInsRate, elapsedYears);
-
       const totals = { mortgage: 0, impounds: 0, other: 0 };
       const details = [];
 
       Object.values(activeScenario.data.assets.accounts || {}).forEach(asset => {
           if (asset.type !== 'property') return;
           if (!isPropertyOwnedOn(monthKey, asset.inputs?.startDate, asset.inputs?.sellDate)) return;
+          const inflationRate = assumptions.inflation?.general || 0.025;
+          const propTaxRate = assumptions.inflation?.propertyTax || 0.02;
+          const propInsRate = assumptions.inflation?.propertyInsurance || inflationRate;
+          const propertyStart = asset.inputs?.startDate ? parseISO(asset.inputs.startDate) : scenarioStartDate;
+          const elapsedYears = Math.max(0, differenceInMonths(monthDate, propertyStart) / 12);
+          const inflationMult = Math.pow(1 + inflationRate, elapsedYears);
+          const propTaxMult = Math.pow(1 + propTaxRate, elapsedYears);
+          const propInsMult = Math.pow(1 + propInsRate, elapsedYears);
           const costs = asset.inputs?.carryingCosts || {};
           const impounds = costs.impounds || [];
           const other = costs.other || [];
-          let impTotal = 0, otherTotal = 0, mortTotal = 0;
-
-          impounds.forEach(item => {
+          const impoundItems = impounds.map((item, idx) => {
               let m = inflationMult;
+              let type = 'other';
               const n = (item.name || '').toLowerCase();
-              if (n.includes('tax')) m = propTaxMult;
-              else if (n.includes('insurance')) m = propInsMult;
-              impTotal += (item.amount || 0) * m;
+              if (n.includes('tax')) { m = propTaxMult; type = 'tax'; }
+              else if (n.includes('insurance')) { m = propInsMult; type = 'insurance'; }
+              return { id: item.id || `${asset.id}-imp-${idx}`, name: item.name || 'Impound', amount: (item.amount || 0) * m, type };
           });
+          const impTotal = impoundItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
-          other.forEach(item => { otherTotal += (item.amount || 0) * inflationMult; });
+          const otherItems = other.map((item, idx) => ({ id: item.id || `${asset.id}-other-${idx}`, name: item.name || 'Property Expense', amount: (item.amount || 0) * inflationMult }));
+          const otherTotal = otherItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
-          const linkedLoans = asset.inputs?.linkedLoanIds || [];
+          const mortgageItems = [];
+          const linkedLoans = new Set(asset.inputs?.linkedLoanIds || []);
+          if (asset.inputs?.linkedLoanId) linkedLoans.add(asset.inputs.linkedLoanId);
           linkedLoans.forEach(lid => {
               const loan = loansMap[lid];
               if (!loan || loan.active === false) return;
               const snap = getLoanSnapshotForMonth(loan, monthKey);
-              if (snap) mortTotal += snap.total;
+              if (snap) {
+                  mortgageItems.push({ id: lid, name: loan.name || 'Mortgage', amount: snap.total, basePayment: snap.basePayment, extraPayment: snap.extraPayment });
+              }
           });
+          const mortTotal = mortgageItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
           totals.mortgage += mortTotal;
           totals.impounds += impTotal;
           totals.other += otherTotal;
-          details.push({ id: asset.id, name: asset.name, mortgage: mortTotal, impounds: impTotal, other: otherTotal });
+          details.push({ id: asset.id, name: asset.name, mortgage: mortTotal, impounds: impTotal, other: otherTotal, mortgageItems, impoundItems, otherItems });
       });
 
       return { totals, details, hasActiveProperty: details.length > 0 };
@@ -1235,6 +1393,14 @@ export default function CashFlow() {
 
   const switchProfileForType = useCallback((type, profileId) => {
       if (!profileId) return;
+
+      // On projections tab, selecting a profile should NOT mutate scenario data used for simulation; just update UI selection
+      if (viewTab === 'projections') {
+          actions.updateScenarioData(`ui.cashflow.selectedProfiles.${type}`, profileId);
+          if (type === activeTab) setEditingProfileId(profileId);
+          return;
+      }
+
       const targetProfile = store.profiles[profileId];
       const currentData = activeScenario.data[type] || {};
       if (targetProfile) {
@@ -1246,7 +1412,7 @@ export default function CashFlow() {
       }
       actions.updateScenarioData(`ui.cashflow.selectedProfiles.${type}`, profileId);
       if (type === activeTab) setEditingProfileId(profileId);
-  }, [actions, activeScenario.data, activeTab, store.profiles]);
+  }, [actions, activeScenario.data, activeTab, store.profiles, viewTab]);
 
   const getLinkedTotal = (loans, monthKey, useBase = false) => {
       const links = expenseData.linkedLoanIds;
@@ -1273,11 +1439,13 @@ export default function CashFlow() {
   }, [simulation, burnMonthKey]);
   const burnMonthly = burnRow?.monthlyBurn || {};
   const recurringBillsLiving = burnMonthly.recurring ?? (totalBills + totalLiving);
-  const fixedHomeExpenses = burnMonthly.home ?? (propertyCosts.totals.mortgage + propertyCosts.totals.impounds + propertyCosts.totals.other);
-  const homeMortgageImpounds = (burnMonthly.homeMortgage || 0) + (burnMonthly.homeImpounds || 0);
-  const homeOtherDisplay = burnMonthly.homeOther ?? propertyCosts.totals.other ?? 0;
+  const propertyExpenseTotal = (propertyCosts.totals.mortgage || 0) + (propertyCosts.totals.impounds || 0) + (propertyCosts.totals.other || 0);
+  const fixedHomeExpenses = propertyExpenseTotal;
   const otherLiabilitiesFixed = burnMonthly.otherLiabilities ?? baseDebtService;
   const burnTotal = recurringBillsLiving + fixedHomeExpenses + otherLiabilitiesFixed + plannedDiscretionary;
+  const monthlyIncome = burnRow?.income || 0;
+  const monthlyExpenses = burnRow?.expenses || burnTotal;
+  const monthlySurplus = monthlyIncome - monthlyExpenses;
 
   // Expense editing helpers shared between Overview and the Expenses tab
   const updateBill = useCallback((category, index, field, value) => {
@@ -1433,18 +1601,14 @@ export default function CashFlow() {
              <div className="text-[10px] text-slate-400">Set in Planning Context</div>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3 mt-4">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
                 <div className="text-[10px] uppercase font-bold text-slate-500">Recurring</div>
                 <div className="text-xl font-bold text-slate-800">${Math.round(recurringBillsLiving).toLocaleString()}</div>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Home: Mortgage+Imp</div>
-                <div className="text-xl font-bold text-blue-700">${Math.round(homeMortgageImpounds).toLocaleString()}</div>
-            </div>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
-                <div className="text-[10px] uppercase font-bold text-slate-500">Home: HOA/Maint</div>
-                <div className="text-xl font-bold text-blue-700">${Math.round(homeOtherDisplay).toLocaleString()}</div>
+                <div className="text-[10px] uppercase font-bold text-slate-500">Property Expenses</div>
+                <div className="text-xl font-bold text-blue-700">${Math.round(propertyExpenseTotal).toLocaleString()}</div>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
                 <div className="text-[10px] uppercase font-bold text-slate-500">Other Liabilities</div>
@@ -1454,9 +1618,17 @@ export default function CashFlow() {
                 <div className="text-[10px] uppercase font-bold text-slate-500">Planned Discretionary</div>
                 <div className="text-xl font-bold text-emerald-600">${Math.round(plannedDiscretionary).toLocaleString()}</div>
             </div>
-            <div className="p-3 bg-red-50 border border-red-100 rounded-lg shadow-sm">
-                <div className="text-[10px] uppercase font-bold text-red-500">Total Burn</div>
-                <div className="text-xl font-bold text-red-600">${Math.round(burnTotal).toLocaleString()}</div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                <div className="text-[10px] uppercase font-bold text-slate-500">Monthly Income</div>
+                <div className="text-xl font-bold text-emerald-700">${Math.round(monthlyIncome).toLocaleString()}</div>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                <div className="text-[10px] uppercase font-bold text-slate-500">Monthly Expenses</div>
+                <div className="text-xl font-bold text-red-600">${Math.round(monthlyExpenses).toLocaleString()}</div>
+            </div>
+            <div className={`p-3 border rounded-lg shadow-sm ${monthlySurplus >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                <div className={`text-[10px] uppercase font-bold ${monthlySurplus >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>Surplus / Deficit</div>
+                <div className={`text-xl font-bold ${monthlySurplus >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>${Math.round(monthlySurplus).toLocaleString()}</div>
             </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
@@ -1531,6 +1703,34 @@ export default function CashFlow() {
                           ))}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1">Property costs flow from Assets; edit those on the property card.</div>
+                  </div>
+              </div>
+
+              <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                      <div>
+                          <div className="text-[10px] uppercase font-bold text-slate-500">Scenario Start Profiles</div>
+                          <div className="text-xs text-slate-500">Profiles effective on scenario start; edit dates in the profile manager.</div>
+                      </div>
+                      {(!hasStartExpenseProfile || !hasStartIncomeProfile) && (
+                          <div className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded">
+                              Set a start profile for each type to run the simulation.
+                          </div>
+                      )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <StartProfilePill
+                          label="Expenses"
+                          profile={startExpenseProfile}
+                          missing={!hasStartExpenseProfile}
+                          onEdit={() => openProfileManagerFor('expenses')}
+                      />
+                      <StartProfilePill
+                          label="Income"
+                          profile={startIncomeProfile}
+                          missing={!hasStartIncomeProfile}
+                          onEdit={() => openProfileManagerFor('income')}
+                      />
                   </div>
               </div>
           </div>

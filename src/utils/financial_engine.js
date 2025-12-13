@@ -161,6 +161,16 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
     // Initialize Debt
     let initialDebt = 0;
     const startMonthKey = format(startDate, 'yyyy-MM');
+    // Map loans to property sell month to suppress post-sale payments/extra payments
+    const loanSellCutoff = {};
+    Object.values(data.assets.accounts || {}).forEach(asset => {
+        if (asset.type !== 'property') return;
+        const sellKey = asset.inputs?.sellDate ? asset.inputs.sellDate.substring(0, 7) : null;
+        if (!sellKey) return;
+        (asset.inputs?.linkedLoanIds || []).forEach(id => { loanSellCutoff[id] = sellKey; });
+        if (asset.inputs?.linkedLoanId) loanSellCutoff[asset.inputs.linkedLoanId] = sellKey;
+    });
+
     Object.values(data.loans || {}).forEach(l => {
         if(l.active) {
             state.activeLoans.add(l.id);
@@ -256,11 +266,13 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
 
         // Inflation
         const inflationRate = assumptions.inflation.general || 0.025;
+        const propTaxRate = assumptions.inflation.propertyTax || 0.02;
+        const propInsRate = assumptions.inflation.propertyInsurance || inflationRate;
         const elapsedMonths = differenceInMonths(currentDate, startDate);
         const elapsedYears = elapsedMonths / 12;
         const inflationMult = Math.pow(1 + inflationRate, elapsedYears);
-        const propTaxMult = Math.pow(1 + (assumptions.inflation.propertyTax || 0.02), elapsedYears);
-        const propInsMult = Math.pow(1 + (assumptions.inflation.propertyInsurance || inflationRate), elapsedYears);
+        const propTaxMult = Math.pow(1 + propTaxRate, elapsedYears);
+        const propInsMult = Math.pow(1 + propInsRate, elapsedYears);
 
         const primaryAge = currentYear - (data.income.primary.birthYear || 1968);
         const spouseAge = currentYear - (data.income.spouse.birthYear || 1968);
@@ -269,7 +281,22 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
             income: { employment: 0, socialSecurity: 0, pension: 0 },
             expenses: { bills: 0, homeMortgage: 0, homeImpounds: 0, homeOther: 0, living: 0, otherDebt: 0, extra: 0, healthcare: 0 },
             assetFlows: { rmd: 0 },
-            monthlyBurn: { recurring: 0, home: 0, homeMortgage: 0, homeImpounds: 0, homeOther: 0, healthcare: 0, otherLiabilities: 0, discretionary: 0 }
+            monthlyBurn: { recurring: 0, home: 0, homeMortgage: 0, homeImpounds: 0, homeOther: 0, healthcare: 0, otherLiabilities: 0, discretionary: 0 },
+            waterfall: {
+                netCashFlow: 0,
+                shortfallStart: 0,
+                cashAvailable: 0,
+                cashUsed: 0,
+                jointGrossUsed: 0,
+                jointNetCovered: 0,
+                inheritedGrossUsed: 0,
+                inheritedNetCovered: 0,
+                retirementGrossUsed: 0,
+                retirementNetCovered: 0,
+                reverseMortgageDraw: 0,
+                toCash: 0,
+                remainingShortfall: 0
+            }
         };
 
         // --- STEP 1: PROPERTY SALES (Liquidity Event) ---
@@ -495,26 +522,49 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         (expenseProfile.living || []).forEach(i => monthlyBreakdown.expenses.living += (i.amount || 0) * inflationMult);
 
         let propertyCarryingApplied = false;
+        let totalActiveLoanBalance = 0;
+        const propertyLoanPaymentRecorded = new Set();
         if (hasActiveProperty) {
             activeProperties.forEach(prop => {
+                const propertyStartDate = prop.inputs?.startDate ? parseISO(prop.inputs.startDate) : startDate;
+                const propertyElapsedYears = Math.max(0, differenceInMonths(currentDate, propertyStartDate) / 12);
+                const propInflationMult = Math.pow(1 + inflationRate, propertyElapsedYears);
+                const propTaxInflationMult = Math.pow(1 + propTaxRate, propertyElapsedYears);
+                const propInsInflationMult = Math.pow(1 + propInsRate, propertyElapsedYears);
                 const costs = prop.inputs?.carryingCosts || {};
                 const impounds = costs.impounds || [];
                 const other = costs.other || [];
                 if (impounds.length > 0 || other.length > 0) propertyCarryingApplied = true;
                 impounds.forEach(i => {
-                    let m = inflationMult;
+                    let m = propInflationMult;
                     const n = (i.name || '').toLowerCase();
-                    if (n.includes('tax')) m = propTaxMult;
-                    else if (n.includes('insurance')) m = propInsMult;
+                    if (n.includes('tax')) m = propTaxInflationMult;
+                    else if (n.includes('insurance')) m = propInsInflationMult;
                     monthlyBreakdown.expenses.homeImpounds += (i.amount || 0) * m;
                 });
                 other.forEach(i => {
-                    monthlyBreakdown.expenses.homeOther += (i.amount || 0) * inflationMult;
+                    monthlyBreakdown.expenses.homeOther += (i.amount || 0) * propInflationMult;
+                });
+
+                // Fallback: ensure linked mortgage payments are counted even if not in activeLoans (e.g., scheduling drift)
+                const linkedIds = new Set(prop.inputs?.linkedLoanIds || (prop.inputs?.linkedLoanId ? [prop.inputs.linkedLoanId] : []));
+                linkedIds.forEach(lid => {
+                    const cutoff = loanSellCutoff[lid];
+                    if (cutoff && monthKey > cutoff) return;
+                    if (propertyLoanPaymentRecorded.has(lid)) return;
+                    const sched = loanScheduleMap[lid];
+                    const info = sched ? sched[monthKey] : null;
+                    if (info && info.payment > 0) {
+                        monthlyBreakdown.expenses.homeMortgage += info.payment;
+                        propertyLoanPaymentRecorded.add(lid);
+                        totalActiveLoanBalance += info.balance || 0;
+                    }
                 });
             });
         }
 
-        if (!propertyCarryingApplied) {
+        // Only apply profile home/impounds when there is an active property; if renting/no property, skip these rows.
+        if (!propertyCarryingApplied && hasActiveProperty) {
             (expenseProfile.home || []).forEach(i => {
                 monthlyBreakdown.expenses.homeOther += (i.amount || 0) * inflationMult;
             });
@@ -528,10 +578,11 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         }
 
         // Debt Service
-        let totalActiveLoanBalance = 0;
         state.activeLoans.forEach(lid => {
             const sched = loanScheduleMap[lid];
             const info = sched ? sched[monthKey] : null;
+            const cutoff = loanSellCutoff[lid];
+            if (cutoff && monthKey > cutoff) return;
             if (info) {
                 if (info.payment > 0) {
                     // Global Debt Service (loan payments are fixed; do not inflate)
@@ -539,8 +590,17 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                     const ltype = meta.type || 'fixed';
                     const isPropertyLoan = meta.propertyLinked === true || !!meta.linkedPropertyId || ltype === 'mortgage' || propertyLoanIds.has(lid);
                     // For reporting: property-linked loan payments land in Home bucket (with impounds/HOA)
-                    if (isPropertyLoan && hasActiveProperty) monthlyBreakdown.expenses.homeMortgage += info.payment;
-                    else monthlyBreakdown.expenses.otherDebt += info.payment;
+                    if (isPropertyLoan && hasActiveProperty) {
+                        // Avoid double-counting if the payment was already captured via the property-linked fallback above.
+                        if (propertyLoanPaymentRecorded.has(lid)) {
+                            totalActiveLoanBalance += info.balance || 0;
+                            return;
+                        }
+                        monthlyBreakdown.expenses.homeMortgage += info.payment;
+                        propertyLoanPaymentRecorded.add(lid);
+                    } else {
+                        monthlyBreakdown.expenses.otherDebt += info.payment;
+                    }
                 }
                 totalActiveLoanBalance += info.balance;
 
@@ -611,26 +671,30 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         // --- WATERFALL ---
         let netCashFlow = totalIncome - totalExpenses;
         let shortfall = 0;
+        monthlyBreakdown.waterfall.netCashFlow = netCashFlow;
 
         if (netCashFlow >= 0) {
             // Surplus logic: All surplus to Cash
             updateComponents(state, 'cash', netCashFlow);
             state.cash += netCashFlow;
+            monthlyBreakdown.waterfall.toCash = netCashFlow;
         } else {
             let needed = Math.abs(netCashFlow);
             const cashMin = assumptions.thresholds?.cashMin || 15000;
+            monthlyBreakdown.waterfall.shortfallStart = needed;
 
             const availCash = Math.max(0, state.cash - cashMin);
-            if (availCash >= needed) { updateComponents(state, 'cash', -needed); state.cash -= needed; needed = 0; }
-            else { updateComponents(state, 'cash', -availCash); state.cash -= availCash; needed -= availCash; }
+            monthlyBreakdown.waterfall.cashAvailable = availCash;
+            if (availCash >= needed) { updateComponents(state, 'cash', -needed); state.cash -= needed; monthlyBreakdown.waterfall.cashUsed = needed; needed = 0; }
+            else { updateComponents(state, 'cash', -availCash); state.cash -= availCash; monthlyBreakdown.waterfall.cashUsed = availCash; needed -= availCash; }
 
             if (needed > 0 && state.joint > 0) {
                 const jointMin = assumptions.thresholds?.jointMin || 0;
                 const availJoint = Math.max(0, state.joint - jointMin);
                 const effTax = taxRate * 0.5;
                 const grossNeeded = needed / (1 - effTax);
-                if (availJoint >= grossNeeded) { updateComponents(state, 'joint', -grossNeeded); state.joint -= grossNeeded; needed = 0; }
-                else { const net = availJoint * (1 - effTax); updateComponents(state, 'joint', -availJoint); state.joint = 0; needed -= net; }
+                if (availJoint >= grossNeeded) { updateComponents(state, 'joint', -grossNeeded); state.joint -= grossNeeded; monthlyBreakdown.waterfall.jointGrossUsed += grossNeeded; monthlyBreakdown.waterfall.jointNetCovered += needed; needed = 0; }
+                else { const net = availJoint * (1 - effTax); updateComponents(state, 'joint', -availJoint); state.joint = 0; monthlyBreakdown.waterfall.jointGrossUsed += availJoint; monthlyBreakdown.waterfall.jointNetCovered += net; needed -= net; }
             }
 
             if (needed > 0 && state.inherited > 0) {
@@ -643,6 +707,8 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                 if (cashCovered > 0) {
                     updateComponents(state, 'cash', cashCovered);
                     state.cash += cashCovered;
+                    monthlyBreakdown.waterfall.inheritedGrossUsed += withdrawal;
+                    monthlyBreakdown.waterfall.inheritedNetCovered += cashCovered;
                     needed -= cashCovered;
                 }
                 // Any excess net flows to cash buffer per ad-hoc rule
@@ -659,8 +725,8 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                 const availRet = Math.max(0, state.retirement - floor);
                 if (availRet > 0) {
                     const grossNeeded = needed / (1 - taxRate);
-                    if (availRet >= grossNeeded) { updateComponents(state, 'retirement', -grossNeeded); state.retirement -= grossNeeded; needed = 0; }
-                    else { const net = availRet * (1 - taxRate); updateComponents(state, 'retirement', -availRet); state.retirement -= availRet; needed -= net; }
+                    if (availRet >= grossNeeded) { updateComponents(state, 'retirement', -grossNeeded); state.retirement -= grossNeeded; monthlyBreakdown.waterfall.retirementGrossUsed += grossNeeded; monthlyBreakdown.waterfall.retirementNetCovered += needed; needed = 0; }
+                    else { const net = availRet * (1 - taxRate); updateComponents(state, 'retirement', -availRet); state.retirement -= availRet; monthlyBreakdown.waterfall.retirementGrossUsed += availRet; monthlyBreakdown.waterfall.retirementNetCovered += net; needed -= net; }
                 }
             }
 
@@ -680,10 +746,12 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                 if (state.rmActive && !state.postHousingPhase) {
                     state.reverseMortgage += needed;
                     rmCurrentYear.draws += needed;
+                    monthlyBreakdown.waterfall.reverseMortgageDraw += needed;
                     needed = 0;
                 }
             }
             if (needed > 0) shortfall = needed;
+            monthlyBreakdown.waterfall.remainingShortfall = needed;
         }
 
         // --- GROWTH & RM INTEREST ---

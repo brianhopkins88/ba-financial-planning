@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { generateAIExport } from '../utils/ai_export_utils';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase, Sliders } from 'lucide-react';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase, Sliders, GitCompare } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
@@ -144,6 +144,7 @@ export default function Sidebar({ currentView, setView }) {
         <NavItem id="assets" label="Assets & Property" icon={Receipt} />
         <NavItem id="ledger" label="Monthly Ledger" icon={Database} />
         <NavItem id="assumptions" label="Assumptions" icon={Settings} />
+        <NavItem id="compare" label="Scenario Compare" icon={GitCompare} />
       </nav>
 
       <div className="p-4 border-t border-slate-800 text-xs text-slate-600">
