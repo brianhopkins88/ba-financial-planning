@@ -66,34 +66,32 @@ const LineItem = ({ label, value, onChange, type="number", onRemove, step, negat
 
 const WorksheetTable = ({ items, onUpdate, onAdd, onRemove, title }) => (
     <div className="bg-slate-50 p-3 rounded border border-slate-200 mb-4">
-        <div className="flex text-[10px] font-bold text-slate-400 uppercase mb-2">
-            <div className="flex-1">{title}</div>
-            <div className="w-24 text-right pr-2">Range / Note</div>
-            <div className="w-24 text-right">Est. Cost</div>
-            <div className="w-6"></div>
+        <div className="grid grid-cols-12 text-[10px] font-bold text-slate-400 uppercase mb-2">
+            <div className="col-span-6 pr-2">{title}</div>
+            <div className="col-span-3 text-left pr-2">Range / Note</div>
+            <div className="col-span-2 text-right">Est. Cost</div>
+            <div className="col-span-1"></div>
         </div>
         <div className="space-y-1">
             {items.map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-center group">
-                    <input
-                        className="flex-1 text-xs border border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none text-slate-700"
+                <div key={idx} className="grid grid-cols-12 gap-2 items-center group">
+                    <textarea
+                        className="col-span-6 text-xs border border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none text-slate-700 resize-none min-h-[44px]"
                         value={item.name}
                         onChange={(e) => onUpdate(idx, 'name', e.target.value)}
                         placeholder="Item Name"
                     />
-                    <div className="w-24 relative">
-                         <input
-                            className="w-full text-[10px] text-right bg-transparent text-slate-400 border-b border-transparent focus:border-slate-300 outline-none"
-                            value={item.note || ''}
-                            onChange={(e) => onUpdate(idx, 'note', e.target.value)}
-                            placeholder="Range..."
-                        />
-                    </div>
-                    <div className="relative w-24">
-                        <span className="absolute left-2 top-1 text-[10px] text-slate-400">$</span>
+                    <textarea
+                        className="col-span-3 text-[11px] border border-slate-200 rounded px-2 py-1 focus:border-blue-500 outline-none text-slate-600 resize-none min-h-[44px]"
+                        value={item.note || ''}
+                        onChange={(e) => onUpdate(idx, 'note', e.target.value)}
+                        placeholder="Range / Note"
+                    />
+                    <div className="relative col-span-2">
+                        <span className="absolute left-2 top-2 text-[10px] text-slate-400">$</span>
                         <input
                             type="number"
-                            className="w-full pl-4 pr-1 py-1 text-xs text-right font-mono font-bold border border-slate-200 rounded focus:border-blue-500 outline-none text-slate-700"
+                            className="w-full pl-5 pr-2 py-2 text-sm text-right font-mono font-bold border border-slate-200 rounded focus:border-blue-500 outline-none text-slate-700"
                             value={item.amount}
                             onChange={(e) => onUpdate(idx, 'amount', parseFloat(e.target.value) || 0)}
                         />
@@ -229,6 +227,16 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
     const totalClosingFunding = (plan.funding || []).reduce((s, i) => s + (i.amount || 0), 0);
     const totalDepositFunding = (plan.depositFunding || []).reduce((s, i) => s + (i.amount || 0), 0);
 
+    const monthlyPayment = useMemo(() => {
+        const principal = plan.loan.amount || 0;
+        const rate = plan.loan.rate || 0;
+        const months = plan.loan.term || 0;
+        if (principal <= 0 || months <= 0) return 0;
+        if (rate === 0) return principal / months;
+        const r = rate / 12;
+        return (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+    }, [plan.loan.amount, plan.loan.rate, plan.loan.term]);
+
     // --- AUTO-LOAN LOGIC ---
     useEffect(() => {
         if (plan.autoLoan) {
@@ -260,33 +268,28 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
 
     const handleCreateLoan = () => {
         const startDate = asset.inputs.startDate || '2027-01-01';
-
-        // CALCULATE PMT (Monthly Payment)
-        const principal = plan.loan.amount;
-        const rate = plan.loan.rate;
-        const months = plan.loan.term;
-        let pmt = 0;
-
-        if (principal > 0 && months > 0) {
-            if (rate === 0) {
-                pmt = principal / months;
-            } else {
-                const r = rate / 12;
-                pmt = (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
-            }
-        }
+        const pmt = monthlyPayment;
+        const newLoanId = `planloan_${asset.id}`;
 
         actions.addLoan({
             name: `Loan: ${asset.name}`,
             type: 'mortgage',
+            id: newLoanId,
             inputs: {
-                principal: principal,
-                rate: rate,
-                termMonths: months,
+                principal: plan.loan.amount,
+                rate: plan.loan.rate,
+                termMonths: plan.loan.term,
                 startDate: startDate,
                 payment: Number(pmt.toFixed(2)) // Store correct calculated payment
             }
         });
+
+        // Link the newly created loan to this property so simulations use the user-created loan
+        const currentLinked = asset.inputs.linkedLoanIds || [];
+        if (!currentLinked.includes(newLoanId)) {
+            updateAsset('inputs.linkedLoanIds', [...currentLinked, newLoanId]);
+        }
+
         alert(`Loan created starting ${startDate} with payment $${pmt.toFixed(2)}/mo. Check Loans module.`);
     };
 
@@ -315,8 +318,6 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                {/* --- LEFT: COST WORKSHEET --- */}
                 <div className="space-y-6">
                     <Section title="1. Construction Costs">
                         <div className="flex gap-4 mb-4">
@@ -336,66 +337,7 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
                         <div className="h-px bg-slate-100 my-2"/>
                         <LineItem label="Builder Credits (-)" value={plan.costs.credits} onChange={v => updatePlan('costs.credits', v)} negative />
                     </Section>
-
-                    <Section title="3. Loan & Closing Cost Estimator" rightAction={<button onClick={handleCreateLoan} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center gap-1">Create Loan <ExternalLink size={10}/></button>}>
-
-                        {/* Auto-Calculate Toggle */}
-                        <div className="flex items-center gap-2 mb-4 bg-indigo-50 p-2 rounded border border-indigo-100">
-                            <input
-                                type="checkbox"
-                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                                checked={plan.autoLoan || false}
-                                onChange={e => updatePlan('autoLoan', e.target.checked)}
-                            />
-                            <div className="flex-1">
-                                <span className="text-xs font-bold text-indigo-700 block">Auto-Calculate Loan Amount</span>
-                                <span className="text-[10px] text-indigo-500">Loan fills the gap between Price and Cash Paid</span>
-                            </div>
-                            <Calculator size={16} className="text-indigo-300"/>
-                        </div>
-
-                        <LineItem
-                            label="Loan Amount"
-                            value={plan.loan.amount}
-                            onChange={v => updatePlan('loan.amount', v)}
-                            readOnly={plan.autoLoan}
-                        />
-                        <LineItem label="Interest Rate (dec)" value={plan.loan.rate} onChange={v => updatePlan('loan.rate', v)} step="0.001" />
-
-                        <div className="h-px bg-slate-100 my-4"/>
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Closing Cost Worksheet</span>
-                            <span className="text-xs font-bold text-slate-700">${totalClosingCosts.toLocaleString()} (Gross)</span>
-                        </div>
-
-                        <WorksheetTable
-                            title="Lender, Title & Escrow Fees"
-                            items={plan.closing.fees}
-                            onUpdate={(i,f,v) => updateList('fees', i, f, v)}
-                            onAdd={() => addToList('fees')}
-                            onRemove={(i) => removeFromList('fees', i)}
-                        />
-
-                        <WorksheetTable
-                            title="Prepaids & Impounds"
-                            items={plan.closing.prepaids}
-                            onUpdate={(i,f,v) => updateList('prepaids', i, f, v)}
-                            onAdd={() => addToList('prepaids')}
-                            onRemove={(i) => removeFromList('prepaids', i)}
-                        />
-
-                        <LineItem label="Interest Rate Buy Down" value={plan.closing.buyDown} onChange={v => updatePlan('closing.buyDown', v)} />
-                        <div className="h-px bg-slate-100 my-2"/>
-                        <LineItem label="Lender / Seller Credits (-)" value={plan.closing.lenderCredits} onChange={v => updatePlan('closing.lenderCredits', v)} negative />
-
-                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 bg-slate-50 p-2 rounded">
-                            <span className="text-xs font-bold text-slate-600">Net Closing Costs (to pay)</span>
-                            <span className="text-sm font-bold text-slate-800">${netClosingCosts.toLocaleString()}</span>
-                        </div>
-                    </Section>
                 </div>
-
-                {/* --- RIGHT: FUNDING --- */}
                 <div className="space-y-6">
                     <Section title="2. Contract Deposits" variant="blue">
                         <LineItem label="Fixed Contract Deposit" value={plan.deposits.contract} onChange={v => updatePlan('deposits.contract', v)} />
@@ -425,37 +367,101 @@ export const NewConstructionPlanner = ({ asset, updateAsset, actions, accounts, 
                             </div>
                         </div>
                     </Section>
-
-                    <Section title={plan.autoLoan ? "4. Cash Down Payment" : "4. Closing Funding"} variant="emerald">
-                        <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-100">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs text-emerald-800 font-bold uppercase">Total Due at Close</span>
-                                <span className="text-sm font-bold text-emerald-700 font-mono">${remainingToClose.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs opacity-70">
-                                <span>(Price + Net Costs - Deposits)</span>
-                            </div>
-                        </div>
-
-                        {!plan.autoLoan && fundingGap !== 0 && (
-                            <div className={`mb-4 p-2 rounded text-xs font-bold flex justify-between items-center ${fundingGap > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                                <span>{fundingGap > 0 ? "Shortfall (Need Cash or Loan):" : "Surplus (Reduce Loan/Cash):"}</span>
-                                <span>${Math.abs(fundingGap).toLocaleString()}</span>
-                            </div>
-                        )}
-
-                        <FundingSourceSelector
-                            list={plan.funding}
-                            updateList={(l) => updatePlan('funding', l)}
-                            accounts={accounts}
-                            simulation={simulation}
-                            targetDate={asset.inputs.startDate}
-                            label={plan.autoLoan ? "Sources for Down Payment" : "Sources to Fill Gap"}
-                            autoLoanMode={plan.autoLoan}
-                        />
-                    </Section>
                 </div>
             </div>
+
+            <Section title="3. Loan & Closing Cost Estimator" rightAction={<button onClick={handleCreateLoan} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center gap-1">Create Loan <ExternalLink size={10}/></button>}>
+
+                <div className="flex items-center gap-2 mb-4 bg-indigo-50 p-2 rounded border border-indigo-100">
+                    <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                        checked={plan.autoLoan || false}
+                        onChange={e => updatePlan('autoLoan', e.target.checked)}
+                    />
+                    <div className="flex-1">
+                        <span className="text-xs font-bold text-indigo-700 block">Auto-Calculate Loan Amount</span>
+                        <span className="text-[10px] text-indigo-500">Loan fills the gap between Price and Cash Paid</span>
+                    </div>
+                    <Calculator size={16} className="text-indigo-300"/>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <LineItem
+                        label="Loan Amount"
+                        value={plan.loan.amount}
+                        onChange={(v) => updatePlan('loan.amount', v)}
+                        readOnly={plan.autoLoan}
+                    />
+                    <LineItem label="Interest Rate (dec)" value={plan.loan.rate} onChange={(v) => updatePlan('loan.rate', v)} step="0.001" />
+                    <LineItem label="Term (months)" value={plan.loan.term} onChange={(v) => updatePlan('loan.term', v)} step="12" />
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded px-3 py-2 mb-2">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase">Estimated Monthly Payment</div>
+                    <div className="text-sm font-mono font-bold text-slate-800">${monthlyPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </div>
+
+                <div className="h-px bg-slate-100 my-4"/>
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Closing Cost Worksheet</span>
+                    <span className="text-xs font-bold text-slate-700">${totalClosingCosts.toLocaleString()} (Gross)</span>
+                </div>
+
+                <WorksheetTable
+                    title="Lender, Title & Escrow Fees"
+                    items={plan.closing.fees}
+                    onUpdate={(i,f,v) => updateList('fees', i, f, v)}
+                    onAdd={() => addToList('fees')}
+                    onRemove={(i) => removeFromList('fees', i)}
+                />
+
+                <WorksheetTable
+                    title="Prepaids & Impounds"
+                    items={plan.closing.prepaids}
+                    onUpdate={(i,f,v) => updateList('prepaids', i, f, v)}
+                    onAdd={() => addToList('prepaids')}
+                    onRemove={(i) => removeFromList('prepaids', i)}
+                />
+
+                <LineItem label="Interest Rate Buy Down" value={plan.closing.buyDown} onChange={v => updatePlan('closing.buyDown', v)} />
+                <div className="h-px bg-slate-100 my-2"/>
+                <LineItem label="Lender / Seller Credits (-)" value={plan.closing.lenderCredits} onChange={v => updatePlan('closing.lenderCredits', v)} negative />
+
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 bg-slate-50 p-2 rounded">
+                    <span className="text-xs font-bold text-slate-600">Net Closing Costs (to pay)</span>
+                    <span className="text-sm font-bold text-slate-800">${netClosingCosts.toLocaleString()}</span>
+                </div>
+            </Section>
+
+            <Section title={plan.autoLoan ? "4. Cash Down Payment" : "4. Closing Funding"} variant="emerald">
+                <div className="mb-4 bg-emerald-50 p-3 rounded border border-emerald-100">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-emerald-800 font-bold uppercase">Total Due at Close</span>
+                        <span className="text-sm font-bold text-emerald-700 font-mono">${remainingToClose.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs opacity-70">
+                        <span>(Price + Net Costs - Deposits)</span>
+                    </div>
+                </div>
+
+                {!plan.autoLoan && fundingGap !== 0 && (
+                    <div className={`mb-4 p-2 rounded text-xs font-bold flex justify-between items-center ${fundingGap > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                        <span>{fundingGap > 0 ? "Shortfall (Need Cash or Loan):" : "Surplus (Reduce Loan/Cash):"}</span>
+                        <span>${Math.abs(fundingGap).toLocaleString()}</span>
+                    </div>
+                )}
+
+                <FundingSourceSelector
+                    list={plan.funding}
+                    updateList={(l) => updatePlan('funding', l)}
+                    accounts={accounts}
+                    simulation={simulation}
+                    targetDate={asset.inputs.startDate}
+                    label={plan.autoLoan ? "Sources for Down Payment" : "Sources to Fill Gap"}
+                    autoLoanMode={plan.autoLoan}
+                />
+            </Section>
         </div>
     );
 };

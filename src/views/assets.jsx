@@ -6,13 +6,20 @@ import { Plus, Trash2, TrendingUp, Home, DollarSign, PiggyBank, Briefcase, Calen
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { NewConstructionPlanner, HomePurchasePlanner } from '../components/PropertyPlanner';
 import { isAfter, parseISO, addYears, format, getYear, isValid } from 'date-fns';
+import { TooltipHelp } from '../components/TooltipHelp';
 
 // ... (Sub-components AssetCard, SectionHeader, etc. remain unchanged)
 // --- SUB-COMPONENTS ---
-const AssetCard = ({ asset, isSelected, onClick }) => (
+const AssetCard = ({ asset, isSelected, onClick, hasOverrides }) => (
   <div onClick={onClick} className={`p-3 rounded-lg cursor-pointer border transition-all mb-2 ${isSelected ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-200'}`}>
     <div className="flex justify-between items-start">
-      <div><div className="font-bold text-slate-700 text-sm">{asset.name}</div><div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">{asset.owner}</div></div>
+      <div>
+        <div className="font-bold text-slate-700 text-sm flex items-center gap-2">
+          {asset.name}
+          {hasOverrides && <span className="h-2 w-2 rounded-full bg-amber-400" title="Overrides active"></span>}
+        </div>
+        <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">{asset.owner}</div>
+      </div>
       <div className="text-right"><div className="font-mono font-bold text-blue-600 text-sm">${(asset.balance || 0).toLocaleString()}</div></div>
     </div>
   </div>
@@ -40,6 +47,39 @@ const GlobalRuleInput = ({ label, value, onChange, description, icon: Icon = Set
     </div>
 );
 
+const CarryingList = ({ title, items, onAdd, onUpdate, onRemove, helper }) => (
+    <div className="bg-slate-50 p-3 rounded border border-slate-200">
+        <div className="flex justify-between items-center mb-2">
+            <div className="text-[10px] font-bold uppercase text-slate-500">{title}</div>
+            <button onClick={onAdd} className="text-[11px] text-blue-600 font-bold flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50"><Plus size={12}/> Add</button>
+        </div>
+        {helper && <div className="text-[11px] text-slate-400 mb-2">{helper}</div>}
+        <div className="space-y-1">
+            {items.length === 0 && <div className="text-xs text-slate-400 italic">No items defined.</div>}
+            {items.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2 py-1">
+                    <input
+                        className="flex-1 text-sm text-slate-700 bg-transparent outline-none"
+                        value={item.name}
+                        onChange={(e) => onUpdate(idx, 'name', e.target.value)}
+                        placeholder="Name"
+                    />
+                    <div className="relative w-28">
+                        <span className="absolute left-2 top-1.5 text-[11px] text-slate-400">$</span>
+                        <input
+                            type="number"
+                            className="w-full pl-5 pr-1 py-1 text-right text-sm font-mono font-bold border border-slate-200 rounded focus:border-blue-500 outline-none"
+                            value={item.amount || 0}
+                            onChange={(e) => onUpdate(idx, 'amount', parseFloat(e.target.value) || 0)}
+                        />
+                    </div>
+                    <button onClick={() => onRemove(idx)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 size={14}/></button>
+                </div>
+            ))}
+        </div>
+    </div>
+);
+
 const CustomChartTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         const data = payload[0].payload;
@@ -64,6 +104,7 @@ export default function Assets() {
   const loans = activeScenario.data.loans || {};
   const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
   const thresholds = assumptions.thresholds || { cashMin: 15000, cashMax: 30000, jointMin: 0, retirementMin: 300000 };
+  const registryAssets = store.registry?.assets || {};
 
   const [selectedId, setSelectedId] = useState(null);
   const [showPlanning, setShowPlanning] = useState(false);
@@ -74,8 +115,10 @@ export default function Assets() {
     return g;
   }, [accounts]);
 
+  const overrideMap = activeScenario.overrides?.assets || {};
   const activeAsset = accounts[selectedId] || Object.values(accounts)[0];
   const activeId = activeAsset?.id;
+  const linkedIds = activeScenario.links?.assets || Object.keys(accounts);
 
   useEffect(() => {
       if (activeAsset?.type === 'property') {
@@ -100,6 +143,23 @@ export default function Assets() {
       let newIds = currentIds.includes(loanId) ? currentIds.filter(id => id !== loanId) : [...currentIds, loanId];
       actions.updateScenarioData(`assets.accounts.${activeId}.inputs.linkedLoanIds`, newIds);
       if (activeAsset.inputs?.linkedLoanId) actions.updateScenarioData(`assets.accounts.${activeId}.inputs.linkedLoanId`, null);
+  };
+
+  const carryingCosts = activeAsset?.inputs?.carryingCosts || { impounds: [], other: [] };
+  const updateCarryingCost = (bucket, idx, field, val) => {
+      const list = carryingCosts[bucket] ? [...carryingCosts[bucket]] : [];
+      list[idx] = { ...list[idx], [field]: val };
+      actions.updateScenarioData(`assets.accounts.${activeId}.inputs.carryingCosts.${bucket}`, list);
+  };
+  const addCarryingCost = (bucket) => {
+      const list = carryingCosts[bucket] ? [...carryingCosts[bucket]] : [];
+      list.push({ id: Date.now(), name: bucket === 'impounds' ? 'New Impound' : 'New Cost', amount: 0 });
+      actions.updateScenarioData(`assets.accounts.${activeId}.inputs.carryingCosts.${bucket}`, list);
+  };
+  const removeCarryingCost = (bucket, idx) => {
+      const list = carryingCosts[bucket] ? [...carryingCosts[bucket]] : [];
+      list.splice(idx, 1);
+      actions.updateScenarioData(`assets.accounts.${activeId}.inputs.carryingCosts.${bucket}`, list);
   };
 
   // --- PROJECTION ENGINE ---
@@ -160,20 +220,39 @@ export default function Assets() {
       return isAfter(parseISO(start), simulationDate);
   }, [activeAsset, simulationDate]);
 
+  const availableRegistryAssets = useMemo(() => Object.values(registryAssets), [registryAssets]);
+
   return (
     <div className="flex h-full bg-slate-50">
       <div className="w-80 bg-slate-100 border-r border-slate-200 flex flex-col h-full overflow-y-auto p-4 flex-shrink-0">
          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><PiggyBank className="text-blue-600"/> Assets</h2>
+         <div className="mb-4">
+             <div className="flex items-center justify-between mb-1">
+                <div className="text-[10px] font-bold uppercase text-slate-500">Registry Assets</div>
+                <div className="text-[10px] text-slate-400">Toggle to include in this scenario</div>
+             </div>
+             <div className="space-y-1 max-h-32 overflow-y-auto">
+                 {availableRegistryAssets.map(a => {
+                     const isLinked = linkedIds.includes(a.id);
+                     return (
+                         <label key={a.id} className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 rounded px-2 py-1 hover:border-blue-300">
+                             <input type="checkbox" checked={isLinked} onChange={() => isLinked ? actions.unlinkAssetFromScenario(a.id) : actions.linkAssetToScenario(a.id)} />
+                             <span className="truncate">{a.name} <span className="uppercase text-[9px] text-slate-400">({a.type})</span></span>
+                         </label>
+                     );
+                 })}
+             </div>
+         </div>
          <SectionHeader title="Retirement (401k/403b)" icon={Briefcase} onAdd={() => actions.addAsset('retirement')} />
-         {grouped.retirement.map(a => <AssetCard key={a.id} asset={a} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
+         {grouped.retirement.map(a => <AssetCard key={a.id} asset={a} hasOverrides={!!overrideMap[a.id]} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
          <SectionHeader title="Inherited IRA" icon={TrendingUp} onAdd={() => actions.addAsset('inherited')} />
-         {grouped.inherited.map(a => <AssetCard key={a.id} asset={a} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
+         {grouped.inherited.map(a => <AssetCard key={a.id} asset={a} hasOverrides={!!overrideMap[a.id]} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
          <SectionHeader title="Joint Investment" icon={TrendingUp} onAdd={() => actions.addAsset('joint')} />
-         {grouped.joint.map(a => <AssetCard key={a.id} asset={a} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
+         {grouped.joint.map(a => <AssetCard key={a.id} asset={a} hasOverrides={!!overrideMap[a.id]} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
          <SectionHeader title="Cash Savings" icon={DollarSign} onAdd={() => actions.addAsset('cash')} />
-         {grouped.cash.map(a => <AssetCard key={a.id} asset={a} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
+         {grouped.cash.map(a => <AssetCard key={a.id} asset={a} hasOverrides={!!overrideMap[a.id]} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
          <SectionHeader title="Property" icon={Home} onAdd={() => actions.addAsset('property')} />
-         {grouped.property.map(a => <AssetCard key={a.id} asset={a} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
+         {grouped.property.map(a => <AssetCard key={a.id} asset={a} hasOverrides={!!overrideMap[a.id]} isSelected={activeId === a.id} onClick={() => setSelectedId(a.id)} />)}
       </div>
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -189,7 +268,11 @@ export default function Assets() {
                             <option value="spouse">Owner: Spouse</option>
                         </select>
                         <span className="text-xs font-bold uppercase bg-blue-100 text-blue-600 rounded px-2 py-1">{activeAsset.type}</span>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <TooltipHelp text="Edits update shared registry; sell date/loan links act as scenario overrides." />
+                        </span>
                     </div>
+                    {overrideMap[activeId] && <div className="mt-2 text-[11px] text-amber-600 font-semibold flex items-center gap-1"><Info size={12}/> Scenario override active</div>}
                  </div>
                  <button onClick={() => { if(confirm("Delete this asset?")) actions.deleteAsset(activeId); }} className="text-slate-400 hover:text-red-600 p-2 rounded hover:bg-red-50"><Trash2 size={20}/></button>
               </div>
@@ -319,6 +402,33 @@ export default function Assets() {
                                   </label>
                               );
                           })}
+                      </div>
+                  </div>
+              )}
+
+              {activeAsset.type === 'property' && (
+                  <div className="mb-8 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-bold text-slate-700 flex items-center gap-2"><DollarSign size={16}/> Property Carrying Costs</h3>
+                          <span className="text-[11px] text-slate-400">Edit here; flows into Cash Flow as Home expenses.</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <CarryingList
+                              title="Impounds (Tax/Insurance)"
+                              helper="For impounded escrow items. Property tax & insurance inflation applied automatically."
+                              items={carryingCosts.impounds || []}
+                              onAdd={() => addCarryingCost('impounds')}
+                              onUpdate={(idx, field, val) => updateCarryingCost('impounds', idx, field, val)}
+                              onRemove={(idx) => removeCarryingCost('impounds', idx)}
+                          />
+                          <CarryingList
+                              title="Other Home Costs (HOA/Maintenance)"
+                              helper="Non-escrow property costs like HOA, landscaping, or maintenance reserves."
+                              items={carryingCosts.other || []}
+                              onAdd={() => addCarryingCost('other')}
+                              onUpdate={(idx, field, val) => updateCarryingCost('other', idx, field, val)}
+                              onRemove={(idx) => removeCarryingCost('other', idx)}
+                          />
                       </div>
                   </div>
               )}

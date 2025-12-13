@@ -1,7 +1,96 @@
 {
   "meta": {
-    "version": "1.3",
+    "version": "2.2.1",
     "activeScenarioId": "scen_default"
+  },
+  "registry": {
+    "assets": {
+      "acct_joint_1": { "id": "acct_joint_1", "type": "joint", "name": "Brokerage Account", "balance": 150000, "active": true },
+      "acct_ira_primary": {
+        "id": "acct_ira_primary",
+        "type": "inherited",
+        "name": "Inherited IRA (primary)",
+        "balance": 120000,
+        "active": true,
+        "inputs": {
+          "startDate": "2024-06-01",
+          "withdrawalSchedule": {}
+        }
+      },
+      "acct_401k_primary": { "id": "acct_401k_primary", "type": "retirement", "name": "primary 401k", "balance": 650000, "active": true },
+      "acct_401k_spouse": { "id": "acct_401k_spouse", "type": "retirement", "name": "spouse 403b", "balance": 580000, "active": true },
+      "acct_cash_1": { "id": "acct_cash_1", "type": "cash", "name": "HYSA Savings", "balance": 45000, "active": true },
+      "acct_prop_1": { "id": "acct_prop_1", "type": "property", "name": "Primary Residence", "balance": 850000, "active": true, "inputs": { "buildYear": 2005, "zipCode": "90210", "locationFactor": 0.01, "carryingCosts": { "impounds": [ { "id": "pc1", "name": "Property Tax", "amount": 850 }, { "id": "pc2", "name": "Home Insurance", "amount": 220 } ], "other": [ { "id": "pc3", "name": "HOA Fees", "amount": 350 }, { "id": "pc4", "name": "Maintenance Fund", "amount": 400 } ] } } }
+    },
+    "liabilities": {
+      "mortgage_1": {
+        "id": "mortgage_1", "name": "Primary Mortgage", "type": "mortgage", "active": true,
+        "inputs": { "principal": 320000, "rate": 0.035, "payment": 1850, "startDate": "2015-05-01", "termMonths": 360 }
+      },
+      "car_loan_1": {
+        "id": "car_loan_1", "name": "primary's SUV", "type": "fixed", "active": true,
+        "inputs": { "principal": 15000, "rate": 0.045, "payment": 450, "startDate": "2023-01-01", "termMonths": 48 }
+      }
+    },
+    "profiles": {
+      "prof_expenses_base": {
+        "id": "prof_expenses_base", "name": "Baseline Expenses", "type": "expenses", "description": "Standard living expenses for current home.",
+        "data": {
+          "bills": [
+            { "id": "b1", "name": "Fiber Internet", "amount": 85 },
+            { "id": "b2", "name": "Streaming Bundle", "amount": 65 },
+            { "id": "b4", "name": "Mobile Plan", "amount": 140 },
+            { "id": "b6", "name": "Gym & Clubs", "amount": 180 },
+            { "id": "h6", "name": "Utilities (Avg)", "amount": 250 },
+            { "id": "b3", "name": "Auto Insurance", "amount": 210 }
+          ],
+          "home": [
+            { "id": "h3", "name": "HOA Fees", "amount": 350 },
+            { "id": "h9", "name": "Maintenance Fund", "amount": 400 }
+          ],
+          "living": [
+            { "id": "l1", "name": "Groceries & Dining", "amount": 1800 },
+            { "id": "l2", "name": "Fuel & Transport", "amount": 400 }
+          ],
+          "impounds": [
+            { "id": "h1", "name": "Property Tax", "amount": 850 },
+            { "id": "h2", "name": "Home Insurance", "amount": 220 }
+          ],
+          "linkedLoanIds": ["mortgage_1", "car_loan_1"],
+          "isFunMoneyInflationAdjusted": false
+        }
+      },
+      "prof_income_base": {
+        "id": "prof_income_base", "name": "Working Income", "type": "income", "description": "Full employment income for both.",
+        "data": {
+          "primary": {
+            "netSalary": 145000, "grossForContrib": 210000, "contribPercent": 0.12,
+            "bonus": { "amount": 15000, "month": 3 },
+            "birthYear": 1968, "birthMonth": 6,
+            "socialSecurity": { "startAge": 67, "monthlyAmount": 3200 }
+          },
+          "spouse": {
+            "netSalary": 138000, "grossForContrib": 195000, "contribPercent": 0.12,
+            "bonus": { "amount": 12000, "month": 12 },
+            "birthYear": 1968, "birthMonth": 8,
+            "socialSecurity": { "startAge": 67, "monthlyAmount": 3100 },
+            "pension": { "monthlyAmount": 1500, "inflationAdjusted": true }
+          },
+          "workStatus": {
+            "2026": { "primary": 1.0, "spouse": 1.0 },
+            "2027": { "primary": 1.0, "spouse": 1.0 },
+            "2028": { "primary": 1.0, "spouse": 1.0 },
+            "2029": { "primary": 1.0, "spouse": 1.0 },
+            "2030": { "primary": 1.0, "spouse": 1.0 },
+            "2031": { "primary": 1.0, "spouse": 1.0 },
+            "2032": { "primary": 1.0, "spouse": 1.0 },
+            "2033": { "primary": 0.5, "spouse": 0.5 },
+            "2034": { "primary": 0.0, "spouse": 0.0 },
+            "2035": { "primary": 0.0, "spouse": 0.0 }
+          }
+        }
+      }
+    }
   },
   "scenarios": {
     "scen_default": {
@@ -10,6 +99,19 @@
       "description": "Example scenario for primary and spouse (Age 58), retiring at 67 with a mix of joint and retirement assets.",
       "created": "2025-12-01T12:00:00Z",
       "lastUpdated": "2025-12-02T08:00:00Z",
+      "links": {
+        "assets": ["acct_joint_1", "acct_ira_primary", "acct_401k_primary", "acct_401k_spouse", "acct_cash_1", "acct_prop_1"],
+        "liabilities": ["mortgage_1", "car_loan_1"],
+        "profiles": {
+          "income": [
+            { "profileId": "prof_income_base", "startDate": "2026-01-01", "isActive": true }
+          ],
+          "expenses": [
+            { "profileId": "prof_expenses_base", "startDate": "2026-01-01", "isActive": true }
+          ]
+        }
+      },
+      "overrides": {},
       "data": {
         "assumptions": {
           "inflation": { "general": 0.03, "medical": 0.05, "propertyTax": 0.02, "socialSecurity": 0.025, "propertyInsurance": 0.04 },

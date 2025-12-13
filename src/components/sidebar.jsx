@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { generateAIExport } from '../utils/ai_export_utils';
-import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase, Sliders } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
   const { store, activeScenario, actions } = useData();
@@ -33,9 +33,7 @@ export default function Sidebar({ currentView, setView }) {
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
       if(action === 'upload') { fileInputRef.current.click(); }
       if(action === 'clear') {
-          if(confirm("Are you sure you want to reset to the default Example Scenario? This will wipe your local changes.")) {
-              actions.resetActiveScenario();
-          }
+          actions.resetAll();
       }
   };
 
@@ -45,19 +43,8 @@ export default function Sidebar({ currentView, setView }) {
       reader.onload = (ev) => {
           try {
               const json = JSON.parse(ev.target.result);
-
-              const choice = prompt(
-                  "Import Options:\n" +
-                  "1. Type 'new' to create a NEW Scenario (Recommended)\n" +
-                  "2. Type 'overwrite' to replace the CURRENT Active Scenario",
-                  "new"
-              );
-
-              if (choice) {
-                  const mode = choice.toLowerCase().includes('over') ? 'overwrite_active' : 'new';
-                  actions.importData(json, mode);
-                  alert(`Import Successful (${mode === 'new' ? 'Created New Scenario' : 'Overwrote Active Scenario'})`);
-              }
+              actions.importData(json);
+              alert("Import Successful (entire app overwritten).");
           } catch(e) {
               console.error(e);
               alert("Error parsing JSON.");
@@ -97,7 +84,7 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v1.4</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v2.3</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
@@ -151,9 +138,11 @@ export default function Sidebar({ currentView, setView }) {
       <nav className="flex-1 p-4 space-y-1">
         <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">Modules</div>
         <NavItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />
+        <NavItem id="builder" label="Scenario Builder" icon={Sliders} />
         <NavItem id="cashflow" label="Cash Flow" icon={Wallet} />
         <NavItem id="loans" label="Liabilities" icon={Landmark} />
         <NavItem id="assets" label="Assets & Property" icon={Receipt} />
+        <NavItem id="ledger" label="Monthly Ledger" icon={Database} />
         <NavItem id="assumptions" label="Assumptions" icon={Settings} />
       </nav>
 

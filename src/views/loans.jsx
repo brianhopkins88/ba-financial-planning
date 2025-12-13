@@ -4,10 +4,14 @@ import { calculateFixedLoan, calculateRevolvingLoan } from '../utils/loan_math';
 import { runFinancialSimulation } from '../utils/financial_engine';
 import { format, parseISO } from 'date-fns';
 import { ChevronRight, Plus, Trash2, DollarSign, Settings, Power, Save, ChevronDown, Copy, Pencil, Lock } from 'lucide-react';
+import { TooltipHelp } from '../components/TooltipHelp';
 
 const ConfigInput = ({ label, value, type = "text", onChange, step, suffix, readOnly = false }) => (
   <div className="flex flex-col space-y-1">
-    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</label>
+    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+      {label}
+      {suffix === 'dec' && <span className="text-[10px] text-slate-400">Decimal (0.05 = 5%)</span>}
+    </label>
     <div className="relative">
       <input
         type={type}
@@ -26,12 +30,31 @@ const ConfigInput = ({ label, value, type = "text", onChange, step, suffix, read
   </div>
 );
 
-const LoanList = ({ loans, select, selected, add, rmData }) => (
+const LoanList = ({ loans, select, selected, add, rmData, registryOptions = [], linkedIds = [], onToggle, overrides = {} }) => (
   <div className="w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 h-full">
     <div className="p-4 border-b border-slate-100 font-bold text-slate-700 flex justify-between items-center">
       <span>Liabilities</span>
       <button onClick={add} className="text-blue-600 hover:bg-blue-50 p-1 rounded transition-colors"><Plus size={18} /></button>
     </div>
+    {registryOptions.length > 0 && (
+      <div className="px-3 py-2 border-b border-slate-100">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[10px] font-bold uppercase text-slate-500">Registry</div>
+          <div className="text-[10px] text-slate-400">Toggle to include in this scenario</div>
+        </div>
+        <div className="space-y-1 max-h-28 overflow-y-auto">
+          {registryOptions.map(item => {
+            const isLinked = linkedIds.includes(item.id);
+            return (
+              <label key={item.id} className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-2 py-1 hover:border-blue-300">
+                <input type="checkbox" checked={isLinked} onChange={() => onToggle && onToggle(item.id, isLinked)} />
+                <span className="truncate">{item.name} <span className="uppercase text-[9px] text-slate-400">({item.type})</span></span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    )}
     <div className="flex-1 overflow-y-auto p-2 space-y-1">
       {Object.values(loans).map((l) => (
         <button
@@ -42,7 +65,10 @@ const LoanList = ({ loans, select, selected, add, rmData }) => (
           }`}
         >
           <div className="flex flex-col overflow-hidden">
-            <span className={`font-medium text-sm truncate ${!l.active ? 'text-slate-400 line-through' : ''}`}>{l.name}</span>
+            <span className={`font-medium text-sm truncate flex items-center gap-1 ${!l.active ? 'text-slate-400 line-through' : ''}`}>
+              {l.name}
+              {overrides[l.id] && <span className="h-2 w-2 rounded-full bg-amber-400" title="Overrides active"></span>}
+            </span>
             <span className="text-[10px] uppercase tracking-wider text-slate-400">{l.type} {l.active ? '' : '(Inactive)'}</span>
           </div>
           {selected === l.id && <ChevronRight size={16} />}
@@ -70,11 +96,15 @@ const LoanList = ({ loans, select, selected, add, rmData }) => (
 
 export default function Loans() {
   const { activeScenario, store, actions } = useData();
-  const loans = activeScenario.data.loans || {};
+  const loans = activeScenario.data?.loans || {};
+  const registryLoans = store.registry?.liabilities || {};
+  const linkedIds = activeScenario.links?.liabilities || Object.keys(loans);
+  const overrideMap = activeScenario.overrides?.liabilities || {};
   const loanKeys = Object.keys(loans);
   const [selectedLoanId, setSelectedLoanId] = useState(loanKeys[0] || null);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const availableRegistryLoans = useMemo(() => Object.values(registryLoans), [registryLoans]);
 
   // Engine for RM Data
   const simulation = useMemo(() => runFinancialSimulation(activeScenario, store.profiles), [activeScenario, store.profiles]);
@@ -84,16 +114,20 @@ export default function Loans() {
   const [dragEndIdx, setDragEndIdx] = useState(null);
   const isDragging = dragStartIdx !== null;
 
-  const activeLoanId = selectedLoanId;
+  const activeLoanId = loanKeys.includes(selectedLoanId) ? selectedLoanId : loanKeys[0] || null;
   const isRmSelected = activeLoanId === 'system_rm';
   const loan = isRmSelected ? { id: 'system_rm', name: 'Reverse Mortgage' } : (loans[activeLoanId] || null);
 
   useEffect(() => {
-    // Default selection logic if current selection becomes invalid
-    if (!isRmSelected && !loans[selectedLoanId] && loanKeys.length > 0) {
-        setSelectedLoanId(loanKeys[0]);
+    // Default selection logic if current selection becomes invalid or after add
+    if (isRmSelected) return;
+    if (!selectedLoanId || !loans[selectedLoanId]) {
+        if (loanKeys.length > 0) {
+            // Prefer newest (last) loan as selection
+            setSelectedLoanId(loanKeys[loanKeys.length - 1]);
+        }
     }
-  }, [loans, selectedLoanId]);
+  }, [loans, selectedLoanId, loanKeys, isRmSelected]);
 
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -151,7 +185,7 @@ export default function Loans() {
     }
   };
 
-  const handleDeleteLoan = () => { if(confirm(`Delete "${loan.name}"?`)) actions.deleteLoan(activeLoanId); };
+  const handleDeleteLoan = () => { if(loan && confirm(`Delete "${loan.name}"?`)) actions.deleteLoan(activeLoanId); };
   const handleExtraPaymentChange = (monthKey, amount) => {
     const path = `loans.${activeLoanId}.strategies.${activeStratId}.extraPayments.${monthKey}`;
     actions.updateScenarioData(path, amount <= 0 ? 0 : amount);
@@ -171,11 +205,21 @@ export default function Loans() {
   if (!loan) {
     return (
       <div className="flex h-full">
-        <LoanList loans={loans} select={setSelectedLoanId} selected={selectedLoanId} add={actions.addLoan} rmData={rmData} />
+        <LoanList
+          loans={loans}
+          select={setSelectedLoanId}
+          selected={selectedLoanId}
+          add={actions.addLoan}
+          rmData={rmData}
+          registryOptions={availableRegistryLoans}
+          linkedIds={linkedIds}
+          onToggle={(id, linked) => linked ? actions.unlinkLiabilityFromScenario(id) : actions.linkLiabilityToScenario(id)}
+          overrides={overrideMap}
+        />
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
           <div className="bg-slate-100 p-4 rounded-full mb-4"><DollarSign size={32} /></div>
           <p>No liabilities found.</p>
-          <button onClick={actions.addLoan} className="mt-4 text-blue-600 font-bold hover:underline">Create a new Liability</button>
+          <button onClick={() => actions.addLoan()} className="mt-4 text-blue-600 font-bold hover:underline">Create a new Liability</button>
         </div>
       </div>
     );
@@ -186,7 +230,16 @@ export default function Loans() {
       const startDate = rmData.length > 0 ? rmData[0].year : 'N/A';
       return (
         <div className="flex h-full select-none">
-            <LoanList loans={loans} select={setSelectedLoanId} selected={activeLoanId} add={actions.addLoan} rmData={rmData} />
+            <LoanList
+              loans={loans}
+              select={setSelectedLoanId}
+              selected={activeLoanId}
+              add={actions.addLoan}
+              rmData={rmData}
+              registryOptions={availableRegistryLoans}
+              linkedIds={linkedIds}
+              onToggle={(id, linked) => linked ? actions.unlinkLiabilityFromScenario(id) : actions.linkLiabilityToScenario(id)}
+            />
             <div className="flex-1 flex flex-col overflow-hidden bg-amber-50/30">
                 <div className="bg-white border-b border-amber-100 px-8 py-6 shadow-sm z-10">
                     <div className="flex items-center gap-3 mb-2">
@@ -236,7 +289,16 @@ export default function Loans() {
   // STANDARD LOAN VIEW
   return (
     <div className="flex h-full select-none">
-      <LoanList loans={loans} select={setSelectedLoanId} selected={activeLoanId} add={actions.addLoan} rmData={rmData} />
+      <LoanList
+        loans={loans}
+        select={setSelectedLoanId}
+        selected={activeLoanId}
+        add={actions.addLoan}
+        rmData={rmData}
+        registryOptions={availableRegistryLoans}
+        linkedIds={linkedIds}
+        onToggle={(id, linked) => linked ? actions.unlinkLiabilityFromScenario(id) : actions.linkLiabilityToScenario(id)}
+      />
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
 
         {/* CONFIG HEADER */}
@@ -267,7 +329,11 @@ export default function Loans() {
                 <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer">
                   <input type="radio" checked={loan.type === 'revolving'} onChange={() => updateMeta('type', 'revolving')} /> Revolving
                 </label>
+                <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                  <TooltipHelp text="Edits update shared registry; payoff strategy/date acts per scenario." />
+                </span>
               </div>
+              {overrideMap[activeLoanId] && <div className="mt-2 text-[11px] text-amber-600 font-semibold flex items-center gap-1"><Lock size={12}/> Scenario override active</div>}
             </div>
 
             <div className="flex items-center gap-2">
@@ -313,7 +379,11 @@ export default function Loans() {
                             <div className="max-h-64 overflow-y-auto">
                                 {Object.entries(strategies).map(([sid, s]) => (
                                     <div key={sid} className={`group flex items-center justify-between p-2 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 ${sid === activeStratId ? 'bg-blue-50/50' : ''}`} onClick={() => handleProfileSelect(sid)}>
-                                        <span className={`text-sm truncate flex-1 ${sid === activeStratId ? 'text-blue-700 font-bold' : 'text-slate-600'}`}>{s.name}</span>
+                                        <div className="flex flex-col flex-1">
+                                            <span className={`text-sm truncate ${sid === activeStratId ? 'text-blue-700 font-bold' : 'text-slate-600'}`}>{s.name}</span>
+                                            <span className="text-[10px] uppercase text-slate-400">Extra payments: {Object.keys(s.extraPayments || {}).length}</span>
+                                            <span className="text-[10px] text-slate-400">Profiles are shared; selection is per scenario</span>
+                                        </div>
                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button onClick={(e) => handleRenameStrategy(e, sid, s.name)} className="p-1 hover:bg-blue-100 rounded text-slate-400 hover:text-blue-500"><Pencil size={12}/></button>
                                             <button onClick={(e) => handleDuplicateStrategy(e, sid, s.name)} className="p-1 hover:bg-blue-100 rounded text-slate-400 hover:text-green-500"><Copy size={12}/></button>

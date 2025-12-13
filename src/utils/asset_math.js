@@ -1,5 +1,5 @@
 import { addYears, getYear, parseISO, differenceInYears, isAfter, format, isValid } from 'date-fns';
-import { calculateFixedLoan, calculateRevolvingLoan } from './loan_math';
+import { calculateFixedLoan, calculateRevolvingLoan } from './loan_math.js';
 
 /**
  * HELPER: Safe Number Extraction
@@ -131,9 +131,12 @@ export const projectHomeValue = (asset, assumptions, allLoans, horizonYears) => 
     const buildYear = safeNum(asset.inputs?.buildYear, startYear - 10);
     const locationFactor = safeNum(asset.inputs?.locationFactor, 0.0);
 
-    // Identify Linked Loans
-    const linkedIds = asset.inputs?.linkedLoanIds || (asset.inputs?.linkedLoanId ? [asset.inputs.linkedLoanId] : []);
-    const linkedLoans = linkedIds.map(id => allLoans[id]).filter(Boolean);
+    // Identify Linked Loans (explicit links + propertyLinked flag)
+    const linkedIds = new Set(asset.inputs?.linkedLoanIds || (asset.inputs?.linkedLoanId ? [asset.inputs.linkedLoanId] : []));
+    Object.values(allLoans || {}).forEach(l => {
+        if (l?.propertyLinked && l?.linkedPropertyId === asset.id) linkedIds.add(l.id);
+    });
+    const linkedLoans = Array.from(linkedIds).map(id => allLoans[id]).filter(Boolean);
 
     // Check for Sell Date
     const sellDateStr = asset.inputs?.sellDate; // "YYYY-MM-DD"

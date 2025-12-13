@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { Save, ChevronDown, ChevronRight, Copy, ArrowRight, Info } from 'lucide-react';
+import { TooltipHelp } from '../components/TooltipHelp';
 
 const NumberInput = ({ label, value, path, updateData, step = "0.01", suffix, helpText }) => {
   const [localValue, setLocalValue] = useState(value);
@@ -92,29 +93,29 @@ export default function Assumptions() {
       {/* 1. GLOBAL SETTINGS */}
       <Section title="1. Global Economic Assumptions" defaultOpen={true}>
         <NumberInput label="General Inflation (CPI)" value={assumptions.inflation.general} path="assumptions.inflation.general" step="0.001" suffix="dec"
-            helpText="Annual increase for living expenses and non-specified bills." />
+            helpText="Applied monthly to living and bills." />
         <NumberInput label="Medical Inflation" value={assumptions.inflation.medical} path="assumptions.inflation.medical" step="0.001" suffix="dec"
-            helpText="Specific inflation rate for healthcare costs in retirement." />
+            helpText="Health care specific inflation." />
         <NumberInput label="Property Tax Cap" value={assumptions.inflation.propertyTax} path="assumptions.inflation.propertyTax" step="0.001" suffix="dec"
-            helpText="Max annual increase for property taxes (e.g. Prop 13 limit)." />
+            helpText="Annual increase cap for property taxes." />
         <NumberInput label="Property Insurance Inf." value={assumptions.inflation.propertyInsurance} path="assumptions.inflation.propertyInsurance" step="0.001" suffix="dec"
-            helpText="Annual inflation rate for home insurance premiums." />
+            helpText="Annual increase for home insurance." />
 
         <div className="col-span-full h-px bg-slate-100 my-2"></div>
 
         <NumberInput label="Market Return (Initial)" value={assumptions.market.initial} path="assumptions.market.initial" step="0.001" suffix="dec"
-            helpText="Inv. growth rate during working years (Accumulation Phase)." />
+            helpText="Glide path start during working years." />
         <NumberInput label="Market Return (Terminal)" value={assumptions.market.terminal} path="assumptions.market.terminal" step="0.001" suffix="dec"
-            helpText="Safe growth rate for late retirement (Preservation Phase)." />
+            helpText="Glide path end in preservation years." />
         <NumberInput label="Return Taper End Age" value={assumptions.market.taperEndAge} path="assumptions.market.taperEndAge" step="1" suffix="yrs"
-            helpText="Age when portfolio fully shifts to Terminal return rate." />
+            helpText="Age when glide path reaches terminal rate." />
 
         <div className="col-span-full h-px bg-slate-100 my-2"></div>
 
         <NumberInput label="Reverse Mortgage Rate" value={assumptions.rates?.reverseMortgage || 0.065} path="assumptions.rates.reverseMortgage" step="0.001" suffix="dec"
             helpText="Interest rate charged on the R-HELOC balance." />
         <NumberInput label="Reverse Mort. Trigger" value={assumptions.thresholds?.retirementMin || 300000} path="assumptions.thresholds.retirementMin" step="1000"
-            helpText="If 401k falls below this, R-HELOC activates to fund deficits." />
+            helpText="When 401k drops below this, R-HELOC activates." />
       </Section>
 
       {/* 2. REAL ESTATE MODELING */}

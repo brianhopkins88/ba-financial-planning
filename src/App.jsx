@@ -9,6 +9,8 @@ import Assumptions from './views/assumptions';
 import Loans from './views/loans';
 import CashFlow from './views/cashflow';
 import Assets from './views/assets';
+import Ledger from './views/ledger';
+import ScenarioBuilder from './views/scenarioBuilder';
 
 const Dashboard = () => {
     // Lazy load the Dashboard to avoid circular dependency issues during init
@@ -92,6 +94,8 @@ const AppShell = () => {
       case 'loans': return <Loans />;
       case 'assets': return <Assets />;
       case 'assumptions': return <Assumptions />;
+      case 'ledger': return <Ledger />;
+      case 'builder': return <ScenarioBuilder />;
       default: return <Dashboard />;
     }
   };

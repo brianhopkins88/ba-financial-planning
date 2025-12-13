@@ -1,12 +1,40 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import initialData from '../data/application_data.json';
 import { cloneDeep, set, get } from 'lodash';
 import { format, parseISO, isValid } from 'date-fns';
+import { migrateStoreToV221 } from '../utils/migrate_to_v2';
+import { scenarioSkeleton, ensureScenarioShape } from '../utils/scenario_shape';
 
 const DataContext = createContext();
 
-// Storage key versioned for the new schema
-const STORAGE_KEY = 'ba_financial_planner_v1.4_primary_spouse';
+// Storage key versioned for the v2.2.1 schema
+const STORAGE_KEY = 'ba_financial_planner_v2.2.1_registry';
+const PREVIOUS_STORAGE_KEY = 'ba_financial_planner_v2.1_registry';
+const LEGACY_STORAGE_KEY = 'ba_financial_planner_v2.0_registry';
+const OLDEST_STORAGE_KEY = 'ba_financial_planner_v1.4_primary_spouse';
+
+const rebuildScenarioFromRegistry = (scenario, registry) => {
+  const scen = ensureScenarioShape(scenario);
+  const rebuiltAssets = {};
+  const rebuiltLoans = {};
+  (scen.links.assets || []).forEach(id => {
+    if (registry?.assets?.[id]) rebuiltAssets[id] = cloneDeep(registry.assets[id]);
+  });
+  (scen.links.liabilities || []).forEach(id => {
+    if (registry?.liabilities?.[id]) rebuiltLoans[id] = cloneDeep(registry.liabilities[id]);
+  });
+  scen.data.assets = { accounts: rebuiltAssets };
+  scen.data.loans = rebuiltLoans;
+  return scen;
+};
+
+const rebuildStoreScenarios = (store) => {
+  const next = cloneDeep(store);
+  Object.keys(next.scenarios || {}).forEach(k => {
+    next.scenarios[k] = rebuildScenarioFromRegistry(next.scenarios[k], next.registry);
+  });
+  return next;
+};
 
 export const DataProvider = ({ children }) => {
 
@@ -14,14 +42,42 @@ export const DataProvider = ({ children }) => {
   const [store, setStore] = useState(() => {
     let data = cloneDeep(initialData);
     try {
-      const local = localStorage.getItem(STORAGE_KEY);
-      if (local) {
-        const parsed = JSON.parse(local);
+      // Prefer v2.2.1 storage; fall back to older schemas
+      const localV221 = localStorage.getItem(STORAGE_KEY);
+      const localV21 = localStorage.getItem(PREVIOUS_STORAGE_KEY);
+      const localV20 = localStorage.getItem(LEGACY_STORAGE_KEY);
+      const localLegacy = localStorage.getItem(OLDEST_STORAGE_KEY);
+      const raw = localV221 || localV21 || localV20 || localLegacy;
+      if (raw) {
+        const parsed = JSON.parse(raw);
         if (parsed && parsed.scenarios) data = parsed;
       }
     } catch (e) {
       console.error("Local storage error, reverting to default JSON", e);
     }
+
+    // Ensure we are on the v2.2.1 shape with registry scaffolding
+    try {
+        data = migrateStoreToV221(data);
+    } catch (e) {
+        console.warn("Migration to v2.2.1 failed, continuing with base data", e);
+    }
+
+    // Repair skeletons on load
+    try {
+        Object.keys(data.scenarios || {}).forEach(k => {
+            data.scenarios[k] = ensureScenarioShape(data.scenarios[k]);
+        });
+    } catch (e) {
+        console.warn("Scenario skeleton repair failed", e);
+    }
+
+    try {
+        data = rebuildStoreScenarios(data);
+    } catch (e) {
+        console.warn("Scenario rebuild failed", e);
+    }
+
     return data;
   });
 
@@ -29,22 +85,92 @@ export const DataProvider = ({ children }) => {
 
   // --- 2. PERSISTENCE ---
   useEffect(() => {
-    if (isLoaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    if (!isLoaded) return;
+    const replacer = () => {
+      const seen = new WeakSet();
+      return (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+          // Skip DOM nodes / React fibers
+          if (typeof Node !== 'undefined' && value instanceof Node) return undefined;
+          if (typeof Element !== 'undefined' && value instanceof Element) return undefined;
+          if (seen.has(value)) return undefined;
+          seen.add(value);
+        }
+        return value;
+      };
+    };
+    try {
+      const normalized = rebuildStoreScenarios(store);
+      const serialized = JSON.stringify(normalized, replacer());
+      if (serialized) localStorage.setItem(STORAGE_KEY, serialized);
+    } catch (e) {
+      console.warn("Persistence failed, skipping write to avoid crash", e);
+    }
   }, [store, isLoaded]);
 
   useEffect(() => {
       setIsLoaded(true);
-      console.log("BA Financial Data Ready (v1.4)");
+      console.log("BA Financial Data Ready (v2.2.1 schema)");
   }, []);
 
   // --- 3. ACCESSORS ---
-  const activeId = store.meta.activeScenarioId;
-  const activeScenario = store.scenarios[activeId];
+  const fallbackScenario = Object.values(store.scenarios || {})[0];
+  const activeId = store.meta.activeScenarioId || fallbackScenario?.id;
+  const activeScenarioRaw = store.scenarios[activeId] || fallbackScenario;
+
+  const getActiveScenarioId = (state) => state.meta?.activeScenarioId || Object.keys(state.scenarios || {})[0];
+
+  // Resolve linked registry items into the active scenario view (non-mutating)
+  const activeScenario = useMemo(() => {
+      const scen = ensureScenarioShape(activeScenarioRaw);
+      const links = scen.links || { assets: [], liabilities: [], profiles: {} };
+      // Start with any scenario data already present to preserve overrides
+      const existingAssets = scen.data?.assets?.accounts || {};
+      const assets = { ...existingAssets };
+      (links.assets || []).forEach(id => {
+          if (!assets[id] && store.registry?.assets?.[id]) assets[id] = cloneDeep(store.registry.assets[id]);
+      });
+      const existingLoans = scen.data?.loans || {};
+      const loans = { ...existingLoans };
+      (links.liabilities || []).forEach(id => {
+          if (!loans[id] && store.registry?.liabilities?.[id]) loans[id] = cloneDeep(store.registry.liabilities[id]);
+      });
+
+      // Merge overrides if present
+      const applyOverrides = (obj, overrides = {}) => {
+          Object.entries(overrides).forEach(([id, ov]) => {
+              if (obj[id]) Object.assign(obj[id], cloneDeep(ov));
+          });
+          return obj;
+      };
+
+      applyOverrides(assets, scen.overrides?.assets);
+      applyOverrides(loans, scen.overrides?.liabilities);
+
+      scen.data = scen.data || {};
+      scen.data.assets = { accounts: assets };
+      scen.data.loans = loans;
+
+      // Profile sequences stay in scen.links
+      if (!scen.data.income) scen.data.income = {};
+      if (!scen.data.expenses) scen.data.expenses = {};
+      scen.data.income.profileSequence = links.profiles?.income || scen.data.income.profileSequence || [];
+      scen.data.expenses.profileSequence = links.profiles?.expenses || scen.data.expenses.profileSequence || [];
+
+      return scen;
+  }, [activeScenarioRaw, store.registry]);
 
   const [simulationDate, setSimulationDate] = useState(() => {
       const savedDateStr = activeScenario?.data?.assumptions?.currentModelDate || activeScenario?.data?.globals?.currentModelDate;
       return (savedDateStr && isValid(parseISO(savedDateStr))) ? parseISO(savedDateStr) : new Date(2026, 0, 1);
   });
+
+  // Safety: if active scenario id is missing (e.g., deleted), repair pointer to first available
+  useEffect(() => {
+      if (!store.meta.activeScenarioId && fallbackScenario?.id) {
+          setStore(prev => ({ ...prev, meta: { ...(prev.meta || {}), activeScenarioId: fallbackScenario.id } }));
+      }
+  }, [store.meta.activeScenarioId, fallbackScenario, setStore]);
 
   useEffect(() => {
       if (!isLoaded || !activeId || !activeScenario) return;
@@ -62,22 +188,17 @@ export const DataProvider = ({ children }) => {
 
   // --- HELPER: ENSURE SEQUENCE VALIDITY ---
   const ensureSequenceDefaults = (scenario) => {
-      // Safety Check: Ensure structure exists to prevent crashes on legacy/broken scenarios
-      if (!scenario.data) scenario.data = {};
-      if (!scenario.data.assumptions) scenario.data.assumptions = { timing: { startYear: 2026, startMonth: 1 } };
-      if (!scenario.data.assumptions.timing) scenario.data.assumptions.timing = { startYear: 2026, startMonth: 1 };
-
-      const startYear = scenario.data.assumptions.timing.startYear || 2026;
-      const startMonth = scenario.data.assumptions.timing.startMonth || 1;
+      const scen = ensureScenarioShape(scenario);
+      const startYear = scen.data.assumptions.timing.startYear || 2026;
+      const startMonth = scen.data.assumptions.timing.startMonth || 1;
 
       ['income', 'expenses'].forEach(type => {
-          if (!scenario.data[type]) scenario.data[type] = {}; // Safety
-          if (!scenario.data[type].profileSequence) scenario.data[type].profileSequence = [];
-          if (scenario.data[type].profileSequence.length > 0) {
-              scenario.data[type].profileSequence.sort((a,b) => a.startDate.localeCompare(b.startDate));
+          if (!scen.data[type].profileSequence) scen.data[type].profileSequence = [];
+          if (scen.data[type].profileSequence.length > 0) {
+              scen.data[type].profileSequence.sort((a,b) => (a.startDate || '').localeCompare(b.startDate || ''));
           }
       });
-      return scenario;
+      return scen;
   };
 
   // --- NEW: DATA VALIDATION & REPAIR ---
@@ -169,17 +290,48 @@ export const DataProvider = ({ children }) => {
 
   const updateScenarioData = (path, value) => {
     setStore(prev => {
-      const newData = cloneDeep(prev);
-      set(newData.scenarios[activeId].data, path, value);
-      newData.scenarios[activeId].lastUpdated = new Date().toISOString();
-      return newData;
+      const next = cloneDeep(prev);
+      const targetId = getActiveScenarioId(next);
+      if (!targetId || !next.scenarios[targetId]) return prev;
+      const scenario = next.scenarios[targetId];
+      if (!scenario.links) scenario.links = { assets: [], liabilities: [], profiles: {} };
+      if (!next.registry) next.registry = { assets: {}, liabilities: {}, profiles: cloneDeep(next.profiles || {}) };
+      if (!scenario.data) scenario.data = {};
+      if (!scenario.data.assets) scenario.data.assets = { accounts: {} };
+      if (!scenario.data.loans) scenario.data.loans = {};
+
+      const parts = path.split('.');
+      if (parts[0] === 'assets' && parts[1] === 'accounts') {
+          const assetId = parts[2];
+          if (!next.registry.assets[assetId]) next.registry.assets[assetId] = {};
+          set(next.registry.assets[assetId], parts.slice(3).join('.'), value);
+          if (!scenario.links.assets.includes(assetId)) scenario.links.assets.push(assetId);
+          // Keep scenario-local copy in sync so UI reflects changes immediately
+          if (!scenario.data.assets.accounts[assetId]) scenario.data.assets.accounts[assetId] = {};
+          set(scenario.data.assets.accounts[assetId], parts.slice(3).join('.'), value);
+      }
+      else if (parts[0] === 'loans') {
+          const loanId = parts[1];
+          if (!next.registry.liabilities[loanId]) next.registry.liabilities[loanId] = {};
+          set(next.registry.liabilities[loanId], parts.slice(2).join('.'), value);
+          if (!scenario.links.liabilities.includes(loanId)) scenario.links.liabilities.push(loanId);
+          if (!scenario.data.loans[loanId]) scenario.data.loans[loanId] = {};
+          set(scenario.data.loans[loanId], parts.slice(2).join('.'), value);
+      }
+      else {
+          set(scenario.data, path, value);
+      }
+
+      scenario.lastUpdated = new Date().toISOString();
+      return next;
     });
   };
 
   const updateScenarioMeta = (key, value) => {
       setStore(prev => {
           const newData = cloneDeep(prev);
-          newData.scenarios[activeId][key] = value;
+          const targetId = getActiveScenarioId(newData);
+          if (targetId && newData.scenarios[targetId]) newData.scenarios[targetId][key] = value;
           return newData;
       });
   };
@@ -191,73 +343,198 @@ export const DataProvider = ({ children }) => {
   const setSimulationMonth = (val) => setSimulationDate(val);
   const saveAll = () => { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); return true; };
 
-  const resetActiveScenario = () => {
-      setStore(prev => {
-          const next = cloneDeep(prev);
-          const defaultScen = cloneDeep(initialData.scenarios['scen_default']);
-          defaultScen.name = "Base Plan: Primary & Spouse";
-          next.scenarios[activeId].data = defaultScen.data;
-          next.scenarios[activeId].name = defaultScen.name;
-          return next;
+  const resetAll = () => {
+      const proceed = confirm("Reset to Example Scenario?\nThis will delete ALL scenarios and data from memory. Export your current state first if you want a backup.");
+      if (!proceed) return;
+
+      // Clear all known planner storage keys to avoid stale data reloading
+      [STORAGE_KEY, PREVIOUS_STORAGE_KEY, LEGACY_STORAGE_KEY, OLDEST_STORAGE_KEY].forEach(k => {
+          try { localStorage.removeItem(k); } catch (e) { console.warn("Unable to remove storage key", k, e); }
       });
-      window.location.reload();
+
+      const fresh = migrateStoreToV221(cloneDeep(initialData));
+      Object.keys(fresh.scenarios || {}).forEach(k => { fresh.scenarios[k] = ensureScenarioShape(fresh.scenarios[k]); });
+      fresh.meta.activeScenarioId = fresh.meta.activeScenarioId || Object.keys(fresh.scenarios || {})[0];
+
+      setStore(fresh);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh)); } catch (e) { console.warn("Local storage write failed during reset", e); }
+  };
+
+  const ensureLinks = (scenario) => {
+      if (!scenario.links) scenario.links = { assets: [], liabilities: [], profiles: {} };
+      if (!scenario.links.assets) scenario.links.assets = [];
+      if (!scenario.links.liabilities) scenario.links.liabilities = [];
+      if (!scenario.links.profiles) scenario.links.profiles = {};
+      if (!scenario.links.profiles.income) scenario.links.profiles.income = scenario.data?.income?.profileSequence || [];
+      if (!scenario.links.profiles.expenses) scenario.links.profiles.expenses = scenario.data?.expenses?.profileSequence || [];
   };
 
   const addAsset = (type) => {
       setStore(prev => {
           const newData = cloneDeep(prev);
-          const newId = `acct_${Date.now()}`;
-          if (!newData.scenarios[activeId].data.assets.accounts) newData.scenarios[activeId].data.assets.accounts = {};
-          const defaults = { id: newId, type, name: "New Account", balance: 0, owner: 'joint', active: true, inputs: {} };
-          if (type === 'property') defaults.inputs = { buildYear: 2020, zipCode: '' };
-          if (type === 'inherited') defaults.inputs = { endDate: '2035-12-31' };
-          newData.scenarios[activeId].data.assets.accounts[newId] = defaults;
-          return newData;
-      });
+          const targetId = getActiveScenarioId(newData);
+      if (!targetId || !newData.scenarios[targetId]) return prev;
+      const scen = newData.scenarios[targetId];
+      ensureLinks(scen);
+      if (!newData.registry) newData.registry = { assets: {}, liabilities: {}, profiles: cloneDeep(newData.profiles || {}) };
+
+      const newId = `acct_${Date.now()}`;
+      const timing = scen.data?.assumptions?.timing || { startYear: 2026, startMonth: 1 };
+      const startDateStr = `${timing.startYear}-${String(timing.startMonth).padStart(2, '0')}-01`;
+      const defaults = { id: newId, type, name: "New Account", balance: 0, owner: 'joint', active: true, inputs: {} };
+      if (type === 'property') defaults.inputs = { buildYear: 2020, zipCode: '', startDate: startDateStr, linkedLoanIds: [] };
+      if (type === 'inherited') defaults.inputs = { endDate: '2035-12-31' };
+      newData.registry.assets[newId] = defaults;
+      // Keep scenario-local copy in sync for immediate UI edits
+      if (!scen.data) scen.data = {};
+      if (!scen.data.assets) scen.data.assets = { accounts: {} };
+      if (!scen.data.assets.accounts) scen.data.assets.accounts = {};
+      scen.data.assets.accounts[newId] = cloneDeep(defaults);
+      scen.links.assets.push(newId);
+      return newData;
+  });
   };
 
   const deleteAsset = (assetId) => {
       setStore(prev => {
           const newData = cloneDeep(prev);
-          if (newData.scenarios[activeId].data.assets.accounts[assetId]) {
-              delete newData.scenarios[activeId].data.assets.accounts[assetId];
-          }
+          const targetId = getActiveScenarioId(newData);
+          if (!targetId || !newData.scenarios[targetId]) return prev;
+          const scen = newData.scenarios[targetId];
+          ensureLinks(scen);
+          if (newData.registry?.assets?.[assetId]) delete newData.registry.assets[assetId];
+          scen.links.assets = (scen.links.assets || []).filter(id => id !== assetId);
+          // Clean up from all scenarios' local data and links
+          Object.values(newData.scenarios || {}).forEach(s => {
+              if (s.data?.assets?.accounts?.[assetId]) delete s.data.assets.accounts[assetId];
+              if (s.links?.assets) s.links.assets = s.links.assets.filter(id => id !== assetId);
+          });
           return newData;
       });
   };
 
   const addLoan = (overrides = {}) => setStore(p => {
       const c = cloneDeep(p);
-      const lid = `loan_${Date.now()}`;
-      if(!c.scenarios[activeId].data.loans) c.scenarios[activeId].data.loans={};
+      const targetId = getActiveScenarioId(c);
+      if (!targetId || !c.scenarios[targetId]) return p;
+      const scen = c.scenarios[targetId];
+      ensureLinks(scen);
+      if(!c.registry) c.registry = { assets: {}, liabilities: {}, profiles: cloneDeep(c.profiles || {}) };
+      const lid = overrides.id || `loan_${Date.now()}`;
       const defaults = {
           id: lid, name: "New Loan", type: "fixed", active: true,
           inputs: { principal: 10000, rate: 0.05, payment: 200, startDate: '2026-01-01', termMonths: 360 },
           activeStrategyId: 'base', strategies: { base: { name: 'Base', extraPayments: {} } }
       };
-      c.scenarios[activeId].data.loans[lid] = { ...defaults, ...overrides, inputs: { ...defaults.inputs, ...(overrides.inputs || {}) } };
+      c.registry.liabilities[lid] = { ...defaults, ...overrides, inputs: { ...defaults.inputs, ...(overrides.inputs || {}) }, id: lid };
+      // Ensure scenario-local copy exists so UI has immediate data
+      if (!scen.data) scen.data = {};
+      if (!scen.data.loans) scen.data.loans = {};
+      scen.data.loans[lid] = cloneDeep(c.registry.liabilities[lid]);
+      if (!scen.links.liabilities.includes(lid)) scen.links.liabilities.push(lid);
       return c;
   });
 
-  const deleteLoan = (lid) => setStore(p => { const c = cloneDeep(p); delete c.scenarios[activeId].data.loans[lid]; return c; });
-  const batchUpdateLoanPayments = (lid, sid, u) => setStore(p => { const c = cloneDeep(p); const t = c.scenarios[activeId].data.loans[lid].strategies[sid].extraPayments; Object.entries(u).forEach(([k,v]) => v <= 0 ? delete t[k] : t[k] = v); return c; });
-  const addLoanStrategy = (lid, n) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; l.strategies[`strat_${Date.now()}`] = { name: n, extraPayments: {} }; return c; });
-  const renameLoanStrategy = (lid, sid, n) => setStore(p => { const c = cloneDeep(p); c.scenarios[activeId].data.loans[lid].strategies[sid].name = n; return c; });
-  const duplicateLoanStrategy = (lid, sid, n) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; l.strategies[`strat_${Date.now()}`] = { ...cloneDeep(l.strategies[sid]), name: n }; return c; });
-  const deleteLoanStrategy = (lid, sid) => setStore(p => { const c = cloneDeep(p); const l = c.scenarios[activeId].data.loans[lid]; delete l.strategies[sid]; if(l.activeStrategyId === sid) l.activeStrategyId = Object.keys(l.strategies)[0]; return c; });
+  const deleteLoan = (lid) => setStore(p => {
+      const c = cloneDeep(p);
+      const targetId = getActiveScenarioId(c);
+      if (!targetId || !c.scenarios[targetId]) return p;
+      const scen = c.scenarios[targetId];
+      ensureLinks(scen);
+      if (c.registry?.liabilities?.[lid]) delete c.registry.liabilities[lid];
+      if (scen.data?.loans?.[lid]) delete scen.data.loans[lid];
+      scen.links.liabilities = (scen.links.liabilities || []).filter(id => id !== lid);
+      // Clean up any other scenarios that may still carry this loan locally
+      Object.values(c.scenarios || {}).forEach(s => {
+          if (s.data?.loans?.[lid]) delete s.data.loans[lid];
+          if (s.links?.liabilities) s.links.liabilities = s.links.liabilities.filter(x => x !== lid);
+      });
+      return c;
+  });
+  const batchUpdateLoanPayments = (lid, sid, u) => setStore(p => {
+      const c = cloneDeep(p);
+      if (c.registry?.liabilities?.[lid]?.strategies?.[sid]) {
+          const t = c.registry.liabilities[lid].strategies[sid].extraPayments;
+          Object.entries(u).forEach(([k,v]) => v <= 0 ? delete t[k] : t[k] = v);
+      }
+      // Mirror into scenario-local copies
+      Object.values(c.scenarios || {}).forEach(s => {
+          const loanRef = s.data?.loans?.[lid];
+          if (loanRef?.strategies?.[sid]) {
+              const map = loanRef.strategies[sid].extraPayments || {};
+              Object.entries(u).forEach(([k,v]) => v <= 0 ? delete map[k] : map[k] = v);
+              loanRef.strategies[sid].extraPayments = map;
+          }
+      });
+      return c;
+  });
+  const addLoanStrategy = (lid, n) => setStore(p => {
+      const c = cloneDeep(p);
+      const l = c.registry?.liabilities?.[lid];
+      const newId = `strat_${Date.now()}`;
+      if (l) l.strategies[newId] = { name: n, extraPayments: {} };
+      Object.values(c.scenarios || {}).forEach(s => {
+          const loanRef = s.data?.loans?.[lid];
+          if (loanRef) {
+              if (!loanRef.strategies) loanRef.strategies = {};
+              loanRef.strategies[newId] = { name: n, extraPayments: {} };
+          }
+      });
+      return c;
+  });
+  const renameLoanStrategy = (lid, sid, n) => setStore(p => {
+      const c = cloneDeep(p);
+      const l = c.registry?.liabilities?.[lid];
+      if (l?.strategies?.[sid]) l.strategies[sid].name = n;
+      Object.values(c.scenarios || {}).forEach(s => {
+          const loanRef = s.data?.loans?.[lid];
+          if (loanRef?.strategies?.[sid]) loanRef.strategies[sid].name = n;
+      });
+      return c;
+  });
+  const duplicateLoanStrategy = (lid, sid, n) => setStore(p => {
+      const c = cloneDeep(p);
+      const l = c.registry?.liabilities?.[lid];
+      const newId = `strat_${Date.now()}`;
+      if (l?.strategies?.[sid]) l.strategies[newId] = { ...cloneDeep(l.strategies[sid]), name: n };
+      Object.values(c.scenarios || {}).forEach(s => {
+          const loanRef = s.data?.loans?.[lid];
+          if (loanRef?.strategies?.[sid]) {
+              if (!loanRef.strategies) loanRef.strategies = {};
+              loanRef.strategies[newId] = { ...cloneDeep(loanRef.strategies[sid]), name: n };
+          }
+      });
+      return c;
+  });
+  const deleteLoanStrategy = (lid, sid) => setStore(p => {
+      const c = cloneDeep(p);
+      const l = c.registry?.liabilities?.[lid];
+      if (l?.strategies?.[sid]) {
+          delete l.strategies[sid];
+          if(l.activeStrategyId === sid) l.activeStrategyId = Object.keys(l.strategies)[0];
+      }
+      Object.values(c.scenarios || {}).forEach(s => {
+          const loanRef = s.data?.loans?.[lid];
+          if (loanRef?.strategies?.[sid]) {
+              delete loanRef.strategies[sid];
+              if (loanRef.activeStrategyId === sid) loanRef.activeStrategyId = Object.keys(loanRef.strategies || {})[0];
+          }
+      });
+      return c;
+  });
 
   const createScenario = (name, cloneData) => {
        setStore(prev => {
            const newId = `scen_${Date.now()}`;
-           const source = cloneData || prev.scenarios[activeId];
-           const newScen = cloneDeep(source);
+           const source = cloneData || prev.scenarios[activeId] || scenarioSkeleton();
+           let newScen = cloneDeep(source);
            newScen.id = newId;
            newScen.name = name;
            if(newScen.linkedProfiles) delete newScen.linkedProfiles;
            delete newScen.__simulation_output;
            delete newScen.__assumptions_documentation;
 
-           ensureSequenceDefaults(newScen);
+           newScen = ensureSequenceDefaults(newScen);
 
            return {
                ...prev,
@@ -267,7 +544,7 @@ export const DataProvider = ({ children }) => {
        });
   };
 
-  const createBlankScenario = (name) => createScenario(name, initialData.scenarios['scen_default']);
+  const createBlankScenario = (name) => createScenario(name, ensureScenarioShape(initialData.scenarios['scen_default'] || scenarioSkeleton()));
 
   const renameScenario = (id, name) => setStore(p => {
       const d = cloneDeep(p);
@@ -288,97 +565,64 @@ export const DataProvider = ({ children }) => {
           return p;
       }
       delete d.scenarios[id];
-      if(d.meta.activeScenarioId === id) d.meta.activeScenarioId = Object.keys(d.scenarios)[0];
+      if(d.meta.activeScenarioId === id) {
+          const firstId = Object.keys(d.scenarios)[0];
+          d.meta.activeScenarioId = firstId;
+      }
       return d;
   });
 
-  // UPDATED IMPORT FUNCTION (FIX FOR MULTI-SCENARIO RESTORE)
-  const importData = (importedJson, mode = 'new') => {
+  // IMPORT: overwrite entire application state with imported file (after validation/migration)
+  const importData = (importedJson) => {
       const cleanData = validateAndRepairImport(importedJson);
+      const migrated = migrateStoreToV221(cleanData);
 
       setStore(prev => {
-          const newState = cloneDeep(prev);
-
-          // 1. Merge Profiles (Global)
-          if (cleanData.profiles) {
-              newState.profiles = { ...newState.profiles, ...cleanData.profiles };
-          }
-
-          const sourceScenarios = cleanData.scenarios || {};
+          const sourceScenarios = migrated.scenarios || {};
           const sourceKeys = Object.keys(sourceScenarios);
-
           if (sourceKeys.length === 0) {
-              console.error("No valid scenarios found in import.");
+              alert("Import failed: no scenarios found in the file.");
               return prev;
           }
 
-          // 2. Identify the Active Scenario ID from the backup
-          const backupActiveId = cleanData.meta?.activeScenarioId;
-          let newActiveId = null;
+          const next = cloneDeep(migrated);
+          if (!next.registry) next.registry = { assets: {}, liabilities: {}, profiles: cloneDeep(next.profiles || {}) };
+          if (!next.profiles) next.profiles = cloneDeep(next.registry.profiles || {});
 
-          // MODE: OVERWRITE ACTIVE
-          if (mode === 'overwrite_active') {
-              const sourceId = backupActiveId || sourceKeys[0];
-              const sourceScenario = sourceScenarios[sourceId];
+          // Ensure each scenario has defaults/sorted sequences
+          Object.keys(next.scenarios || {}).forEach(k => {
+              next.scenarios[k] = ensureSequenceDefaults(next.scenarios[k]);
+          });
 
-              if (sourceScenario) {
-                  const finalScenario = cloneDeep(sourceScenario);
-                  try {
-                      ensureSequenceDefaults(finalScenario);
-                      const targetId = newState.meta.activeScenarioId;
-                      newState.scenarios[targetId].data = finalScenario.data;
-                      newState.scenarios[targetId].name = finalScenario.name;
-                  } catch (err) {
-                      console.error("Failed to overwrite active scenario with imported data:", err);
-                  }
-              }
+          // Determine active scenario; prompt if missing/invalid
+          const validKeys = Object.keys(next.scenarios || {});
+          let activeId = next.meta?.activeScenarioId;
+          if (!activeId || !validKeys.includes(activeId)) {
+              const fallback = validKeys[0];
+              const choice = typeof prompt === 'function'
+                  ? prompt(`Select active scenario ID to use:\n${validKeys.join('\n')}`, fallback)
+                  : null;
+              activeId = (choice && validKeys.includes(choice)) ? choice : fallback;
           }
-          // MODE: NEW (FULL RESTORE)
-          else {
-              // Iterate through ALL scenarios in the import file
-              sourceKeys.forEach((key, index) => {
-                  try {
-                      const sourceScenario = sourceScenarios[key];
-                      const finalScenario = cloneDeep(sourceScenario);
-                      ensureSequenceDefaults(finalScenario);
+          next.meta = { ...(next.meta || {}), activeScenarioId: activeId };
 
-                      // Generate a unique ID to ensure we don't collide with existing keys
-                      const newId = `scen_${Date.now()}_${index}`;
-
-                      finalScenario.id = newId;
-                      newState.scenarios[newId] = finalScenario;
-
-                      // If this matches the backup's active ID, track it
-                      if (key === backupActiveId) {
-                          newActiveId = newId;
-                      }
-                      // Fallback: If no match found yet, default to the first one imported
-                      if (!newActiveId && index === 0) {
-                          newActiveId = newId;
-                      }
-                  } catch (err) {
-                      console.warn(`Skipping malformed scenario '${key}' during import:`, err);
-                  }
-              });
-
-              // 3. Switch active scenario to the restored one (prioritizing the one that was active in backup)
-              if (newActiveId) {
-                  newState.meta.activeScenarioId = newActiveId;
-              }
-          }
-
-          return newState;
+          return next;
       });
   };
 
   const saveProfile = (type, name, data) => setStore(prev => {
       const next = cloneDeep(prev);
       const pid = `prof_${Date.now()}`;
+      if(!next.registry) next.registry = { assets: {}, liabilities: {}, profiles: {} };
       if(!next.profiles) next.profiles = {};
-      next.profiles[pid] = { id: pid, name, type, data: cloneDeep(data) };
+      const payload = { id: pid, name, type, data: cloneDeep(data) };
+      next.registry.profiles[pid] = payload;
+      next.profiles[pid] = payload;
 
-      if (!next.scenarios[activeId].data[type].profileSequence) next.scenarios[activeId].data[type].profileSequence = [];
-      next.scenarios[activeId].data[type].profileSequence.push({
+      const scen = next.scenarios[activeId];
+      ensureLinks(scen);
+      const seq = type === 'income' ? scen.links.profiles.income : scen.links.profiles.expenses;
+      seq.push({
           profileId: pid,
           startDate: format(simulationDate, 'yyyy-MM-dd'),
           isActive: true
@@ -386,16 +630,65 @@ export const DataProvider = ({ children }) => {
       return next;
   });
 
-  const updateProfile = (pid, d) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].data = cloneDeep(d); return c; });
-  const updateProfileMeta = (pid, meta) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) { Object.assign(c.profiles[pid], meta); } return c; });
-  const renameProfile = (pid, n) => setStore(p => { const c = cloneDeep(p); if(c.profiles[pid]) c.profiles[pid].name = n; return c; });
-  const deleteProfile = (pid) => setStore(p => { const c = cloneDeep(p); delete c.profiles[pid]; return c; });
+  const updateProfile = (pid, d) => setStore(p => { const c = cloneDeep(p); if(c.registry?.profiles?.[pid]) c.registry.profiles[pid].data = cloneDeep(d); if(c.profiles?.[pid]) c.profiles[pid].data = cloneDeep(d); return c; });
+  const updateProfileMeta = (pid, meta) => setStore(p => { const c = cloneDeep(p); if(c.registry?.profiles?.[pid]) { Object.assign(c.registry.profiles[pid], meta); } if(c.profiles?.[pid]) { Object.assign(c.profiles[pid], meta); } return c; });
+  const renameProfile = (pid, n) => setStore(p => { const c = cloneDeep(p); if(c.registry?.profiles?.[pid]) c.registry.profiles[pid].name = n; if(c.profiles?.[pid]) c.profiles[pid].name = n; return c; });
+  const deleteProfile = (pid) => setStore(p => { const c = cloneDeep(p); if(c.registry?.profiles?.[pid]) delete c.registry.profiles[pid]; if(c.profiles?.[pid]) delete c.profiles[pid]; return c; });
   const toggleProfileInScenario = (t, pid, act, date) => setStore(p => {
       const c = cloneDeep(p);
-      const seq = c.scenarios[activeId].data[t].profileSequence;
+      const targetId = getActiveScenarioId(c);
+      if (!targetId || !c.scenarios[targetId]) return p;
+      const scen = ensureScenarioShape(c.scenarios[targetId]);
+      c.scenarios[targetId] = scen;
+      const seq = t === 'income' ? scen.links.profiles.income : scen.links.profiles.expenses;
       const exist = seq.find(x => x.profileId === pid);
       if(exist){ exist.isActive = act; if(date) exist.startDate = date; }
       else { seq.push({ profileId: pid, startDate: date || '2026-01-01', isActive: act }); }
+      return c;
+  });
+
+  const linkAssetToScenario = (assetId) => setStore(p => {
+      const c = cloneDeep(p);
+      const scen = c.scenarios[activeId];
+      ensureLinks(scen);
+      if (!scen.links.assets.includes(assetId)) scen.links.assets.push(assetId);
+
+      // Ensure the asset data is present in the scenario (copy from registry if missing)
+      if (!scen.data.assets) scen.data.assets = { accounts: {} };
+      if (!scen.data.assets.accounts) scen.data.assets.accounts = {};
+      if (!scen.data.assets.accounts[assetId] && c.registry?.assets?.[assetId]) {
+          scen.data.assets.accounts[assetId] = cloneDeep(c.registry.assets[assetId]);
+      }
+      return c;
+  });
+
+  const unlinkAssetFromScenario = (assetId) => setStore(p => {
+      const c = cloneDeep(p);
+      const scen = c.scenarios[activeId];
+      ensureLinks(scen);
+      scen.links.assets = (scen.links.assets || []).filter(id => id !== assetId);
+      return c;
+  });
+
+  const linkLiabilityToScenario = (lid) => setStore(p => {
+      const c = cloneDeep(p);
+      const scen = c.scenarios[activeId];
+      ensureLinks(scen);
+      if (!scen.links.liabilities.includes(lid)) scen.links.liabilities.push(lid);
+
+      // Ensure the liability data is present in the scenario (copy from registry if missing)
+      if (!scen.data.loans) scen.data.loans = {};
+      if (!scen.data.loans[lid] && c.registry?.liabilities?.[lid]) {
+          scen.data.loans[lid] = cloneDeep(c.registry.liabilities[lid]);
+      }
+      return c;
+  });
+
+  const unlinkLiabilityFromScenario = (lid) => setStore(p => {
+      const c = cloneDeep(p);
+      const scen = c.scenarios[activeId];
+      ensureLinks(scen);
+      scen.links.liabilities = (scen.links.liabilities || []).filter(id => id !== lid);
       return c;
   });
 
@@ -405,9 +698,10 @@ export const DataProvider = ({ children }) => {
       actions: {
         switchScenario, createScenario, createBlankScenario, renameScenario, deleteScenario, updateScenarioMeta,
         updateScenarioData, updateScenarioDate, setSimulationMonth, saveAll,
-        resetActiveScenario, addAsset, deleteAsset, addLoan, deleteLoan, batchUpdateLoanPayments,
+        resetAll, addAsset, deleteAsset, addLoan, deleteLoan, batchUpdateLoanPayments,
         addLoanStrategy, renameLoanStrategy, duplicateLoanStrategy, deleteLoanStrategy,
-        importData, saveProfile, updateProfile, updateProfileMeta, renameProfile, deleteProfile, toggleProfileInScenario
+        importData, saveProfile, updateProfile, updateProfileMeta, renameProfile, deleteProfile, toggleProfileInScenario,
+        linkAssetToScenario, unlinkAssetFromScenario, linkLiabilityToScenario, unlinkLiabilityFromScenario
       }
     }}>
       {children}
