@@ -1,20 +1,21 @@
 # BA Financial Analysis – Requirements Specification
 
-**Version:** 2.3.0  
+**Version:** 3.0a (alpha)  
 **Date:** December 14, 2025  
-**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX / data integrity updates)
+**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX/data integrity + v3.0a alpha features). Codebase is at **3.0 alpha** and still needs additional validation and testing.
 
 ------
 
 ## 0. Purpose And Planning Objective
-### 0.0 What’s New in v2.3
-- Cash Flow UX overhaul: Tabbed layout (Overview, Projections, Expenses, Income) with a planning context bar and persistent profile selections.
-- Monthly Burn drilldown: Read-only burn tiles with inline “Edit” jumps into category accordions (bills, living, mortgage+impounds, HOA/maintenance, liabilities, discretionary/one-offs).
-- Projections separated: Net Cash Flow chart and annual analysis table now live on a dedicated Projections tab for clarity.
-- Property-driven housing costs: Mortgage/impounds/HOA/maintenance sourced from property carrying costs and linked loans; property-linked loans excluded from “Other Liabilities.”
-- Import/reset hard overwrite: All imports overwrite app data after validation/migration; reset clears all known storage keys before writing defaults.
-- Profile persistence: Cashflow remembers selected income/expense profiles (ui.cashflow.selectedProfiles) across navigation; timeline manager lives in the profile tabs.
-- Model month sync: Cashflow planning month tracks the scenario’s current model date (so planned loan extras, e.g., HELOC Feb 2026, surface in burn).
+### 0.0 What’s New in v3.0a (alpha; requires further validation/testing)
+- Cash Flow header now surfaces `Property Expenses`, `Monthly Income`, `Monthly Expenses`, and `Surplus/Deficit` (replaces Total Burn card for the model month).
+- Property costs consolidated under a single Property Expenses card; profile home/impound rows only apply when a property is active.
+- Engine safeguards: property-linked loan payments stop after the property sell month; de-duplication prevents double-counting property-linked debt service.
+- Waterfall data captured per month for future drilldowns; Balance Inspector messaging updated to reflect removal of the view button.
+- Scenario Compare module (left sidebar): up to three distinct scenarios side-by-side with income/expense profile start info, milestone-age net worth by asset/liability, and chronological event bullets.
+- Codebase is **3.0 alpha**; feature-complete for this round but still needs validation and test coverage before marking stable.
+
+### 0.1 Primary Objective
 
 ### 0.1 Primary Objective
 

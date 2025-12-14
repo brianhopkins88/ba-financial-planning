@@ -1,29 +1,36 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine.js';
+import { ensureScenarioShape } from '../utils/scenario_shape.js';
 import { cloneDeep } from 'lodash';
-import { ChevronDown, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 
 const ages = [65, 70, 75, 80, 85, 90];
 
 const resolveScenario = (scenario, registry) => {
-    const resolved = cloneDeep(scenario);
+    const resolved = ensureScenarioShape(cloneDeep(scenario));
     const links = resolved.links || { assets: [], liabilities: [], profiles: {} };
     const data = resolved.data ? cloneDeep(resolved.data) : {};
 
-    // Assets: keep existing; add linked-from-registry when missing
+    // Assets: merge linked items from registry and apply overrides
     const existingAssets = data.assets?.accounts || {};
     const mergedAssets = { ...existingAssets };
     (links.assets || []).forEach(id => {
         if (!mergedAssets[id] && registry?.assets?.[id]) mergedAssets[id] = cloneDeep(registry.assets[id]);
     });
+    Object.entries(resolved.overrides?.assets || {}).forEach(([id, ov]) => {
+        if (mergedAssets[id]) Object.assign(mergedAssets[id], cloneDeep(ov));
+    });
     data.assets = { accounts: mergedAssets };
 
-    // Loans: keep existing; add linked-from-registry when missing
+    // Loans: merge linked items from registry and apply overrides
     const existingLoans = data.loans || {};
     const mergedLoans = { ...existingLoans };
     (links.liabilities || []).forEach(id => {
         if (!mergedLoans[id] && registry?.liabilities?.[id]) mergedLoans[id] = cloneDeep(registry.liabilities[id]);
+    });
+    Object.entries(resolved.overrides?.liabilities || {}).forEach(([id, ov]) => {
+        if (mergedLoans[id]) Object.assign(mergedLoans[id], cloneDeep(ov));
     });
     data.loans = mergedLoans;
 
@@ -48,18 +55,32 @@ const getProfileSummary = (scenario, store) => {
     };
     const i = findFirst(seqIncome);
     const e = findFirst(seqExpense);
-    const iName = i ? (store.profiles?.[i.profileId]?.name || i.profileId) : 'Not set';
-    const eName = e ? (store.profiles?.[e.profileId]?.name || e.profileId) : 'Not set';
+    const catalog = store.registry?.profiles || store.profiles || {};
+    const inlineIncomeName = scenario.data?.income?.primary ? 'Scenario Income (inline)' : 'Not set';
+    const inlineExpenseName = scenario.data?.expenses ? 'Scenario Expenses (inline)' : 'Not set';
+    const iName = i ? (catalog[i.profileId]?.name || inlineIncomeName || i.profileId) : inlineIncomeName;
+    const eName = e ? (catalog[e.profileId]?.name || inlineExpenseName || e.profileId) : inlineExpenseName;
     return { income: { name: iName, start: i?.startDate }, expense: { name: eName, start: e?.startDate } };
 };
 
 const pickSnapshotByAge = (simulation, scenario, ageTarget) => {
-    if (!simulation) return null;
+    if (!simulation || !simulation.timeline) return null;
     const startMonth = scenario.data?.assumptions?.timing?.startMonth || 1;
     const birthYear = scenario.data?.income?.primary?.birthYear || 1968;
     const targetYear = birthYear + ageTarget;
-    const target = simulation.timeline.find(t => t.year === targetYear && t.month === startMonth) ||
-                   simulation.timeline.find(t => t.year === targetYear);
+
+    // Prefer exact year/month match
+    let target = simulation.timeline.find(t => t.year === targetYear && t.month === startMonth)
+              || simulation.timeline.find(t => t.year === targetYear);
+
+    // Fallback: nearest entry at or after the target age
+    if (!target) {
+        const byAge = simulation.timeline
+            .filter(t => typeof t.age === 'number' && t.age >= ageTarget)
+            .sort((a, b) => a.age - b.age);
+        target = byAge[0] || simulation.timeline[simulation.timeline.length - 1];
+    }
+
     if (!target) return null;
     const b = target.balances || {};
     return {
@@ -84,14 +105,14 @@ const eventsUpToAge = (simulation, scenario, ageTarget) => {
             const yr = parseInt((e.date || '').slice(0, 4), 10);
             return !Number.isNaN(yr) && yr <= cutoffYear;
         })
-        .slice(-6); // keep recent events up to the cutoff
+        .slice(-8); // keep the latest handful up to the cutoff
 };
 
 const ScenarioSelector = ({ value, options, onChange, disableIds, label }) => {
     return (
         <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase font-bold text-slate-500">{label}</span>
-            <div className="relative flex-1">
+            <div className="flex-1">
                 <select
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
@@ -103,7 +124,6 @@ const ScenarioSelector = ({ value, options, onChange, disableIds, label }) => {
                         </option>
                     ))}
                 </select>
-                <ChevronDown size={14} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
             </div>
         </div>
     );
@@ -126,11 +146,17 @@ export default function ScenarioCompare() {
     const initialIds = useMemo(() => {
         const ids = scenarioOptions.map(s => s.id);
         const primary = activeScenario?.id || ids[0];
-        const secondary = ids.find(id => id !== primary);
-        return secondary ? [primary, secondary] : [primary];
+        return primary ? [primary] : [];
     }, [scenarioOptions, activeScenario]);
 
     const [selected, setSelected] = useState(initialIds);
+
+    // Keep selection aligned with active scenario if nothing is selected yet
+    useEffect(() => {
+        if (selected.length === 0 && activeScenario?.id) {
+            setSelected([activeScenario.id]);
+        }
+    }, [activeScenario?.id, selected.length]);
 
     const handleSelect = useCallback((idx, id) => {
         if (selected.includes(id) && selected[idx] !== id) {
@@ -148,23 +174,34 @@ export default function ScenarioCompare() {
         if (unused) setSelected([...selected, unused.id]);
     };
 
-    const removeThird = () => {
-        if (selected.length === 3) setSelected(selected.slice(0, 2));
+    const removeColumn = (idx) => {
+        if (idx === 0) return; // always keep the first column
+        setSelected(selected.filter((_, i) => i !== idx));
     };
 
     const scenarioData = useMemo(() => {
+        const profileCatalog = store.registry?.profiles || store.profiles || {};
         return selected.map(id => {
-            const scen = store.scenarios[id];
+            const scen = id === activeScenario?.id ? activeScenario : store.scenarios[id];
             if (!scen) return { id, data: null };
-            const resolved = resolveScenario(scen, store.registry);
-            const sim = runFinancialSimulation(resolved, store.profiles, store.registry);
-            return { id, data: { scenario: resolved, simulation: sim } };
+            try {
+                const resolved = resolveScenario(scen, store.registry);
+                const sim = runFinancialSimulation(resolved, profileCatalog, store.registry);
+                if (!sim || !sim.timeline || sim.timeline.length === 0) {
+                    console.warn('Scenario compare: simulation returned no timeline', { scenarioId: id });
+                    return { id, data: { scenario: resolved, simulation: { timeline: [], events: [] } } };
+                }
+                return { id, data: { scenario: resolved, simulation: sim } };
+            } catch (err) {
+                console.error('Scenario compare simulation error', err);
+                return { id, data: { scenario: scen, simulation: { timeline: [], events: [] }, error: err } };
+            }
         });
-    }, [selected, store]);
+    }, [selected, store, activeScenario]);
 
-    const renderAssetsCell = (simData, scen, age) => {
-        const snap = pickSnapshotByAge(simData?.simulation, scen, age);
-        if (!snap) return <div className="text-xs text-slate-400">No data</div>;
+    const renderAssetsCell = (simulation, scen, age) => {
+        const snap = pickSnapshotByAge(simulation, scen, age);
+        if (!snap) return <div className="text-xs text-slate-400">No data (timeline not found)</div>;
         const netWorth = Math.round(snap.netWorth || 0).toLocaleString();
         return (
             <div className="space-y-1">
@@ -180,8 +217,8 @@ export default function ScenarioCompare() {
         );
     };
 
-    const renderEventsCell = (simData, scen, age) => {
-        const items = eventsUpToAge(simData?.simulation, scen, age);
+    const renderEventsCell = (simulation, scen, age) => {
+        const items = eventsUpToAge(simulation, scen, age);
         if (!items.length) return <div className="text-xs text-slate-400">No events yet</div>;
         return (
             <ul className="text-xs text-slate-700 list-disc pl-4 space-y-1">
@@ -197,7 +234,7 @@ export default function ScenarioCompare() {
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Scenario Comparison</h1>
                     <p className="text-sm text-slate-500">Select up to three scenarios and compare profiles, net worth milestones, and major events side-by-side.</p>
@@ -208,28 +245,36 @@ export default function ScenarioCompare() {
                             <Plus size={14}/> Add Scenario
                         </button>
                     )}
-                    {selected.length === 3 && (
-                        <button onClick={removeThird} className="flex items-center gap-1 px-3 py-2 bg-slate-100 text-slate-600 text-sm rounded shadow hover:bg-slate-200">
-                            <X size={14}/> Remove 3rd
-                        </button>
-                    )}
                 </div>
             </div>
 
             <div className="overflow-auto border border-slate-200 rounded-xl bg-white shadow-sm">
-                <table className="min-w-full text-sm">
+                <table className="min-w-full text-sm table-auto">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th rowSpan={3} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase">Age</th>
+                            <th rowSpan={3} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase w-16">Age</th>
                             {scenarioData.map((entry, idx) => (
-                                <th key={`${entry.id}-selector`} colSpan={2} className="px-3 py-3">
-                                    <ScenarioSelector
-                                        label={`Scenario ${idx + 1}`}
-                                        value={entry.id}
-                                        options={scenarioOptions}
-                                        disableIds={selected.filter((_, i) => i !== idx)}
-                                        onChange={(id) => handleSelect(idx, id)}
-                                    />
+                                <th key={`${entry.id}-selector`} colSpan={2} className="px-3 py-3 min-w-[280px]">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <ScenarioSelector
+                                                label={`Scenario ${idx + 1}`}
+                                                value={entry.id}
+                                                options={scenarioOptions}
+                                                disableIds={selected.filter((_, i) => i !== idx)}
+                                                onChange={(id) => handleSelect(idx, id)}
+                                            />
+                                        </div>
+                                        {idx > 0 && (
+                                            <button
+                                                onClick={() => removeColumn(idx)}
+                                                className="text-slate-400 hover:text-red-600 p-1 rounded"
+                                                title="Remove scenario"
+                                            >
+                                                <X size={14}/>
+                                            </button>
+                                        )}
+                                    </div>
                                 </th>
                             ))}
                         </tr>
@@ -237,7 +282,7 @@ export default function ScenarioCompare() {
                             {scenarioData.map((entry) => {
                                 const summary = entry.data ? getProfileSummary(entry.data.scenario, store) : null;
                                 return (
-                                    <th key={`${entry.id}-profiles`} colSpan={2} className="px-3 py-2 text-left">
+                                    <th key={`${entry.id}-profiles`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
                                         {summary ? (
                                             <div className="text-xs text-slate-600 space-y-1">
                                                 <div><span className="font-bold text-slate-700">Income:</span> {summary.income.name} <span className="text-slate-400">({summary.income.start || 'n/a'})</span></div>
@@ -253,8 +298,8 @@ export default function ScenarioCompare() {
                         <tr className="bg-slate-100 border-b border-slate-200 text-[11px] uppercase text-slate-500">
                             {scenarioData.map((entry) => (
                                 <React.Fragment key={`${entry.id}-labels`}>
-                                    <th className="px-3 py-2 text-left font-bold">Assets & Debt</th>
-                                    <th className="px-3 py-2 text-left font-bold">Events</th>
+                                    <th className="px-3 py-2 text-left font-bold min-w-[180px]">Assets & Debt</th>
+                                    <th className="px-3 py-2 text-left font-bold min-w-[200px]">Events</th>
                                 </React.Fragment>
                             ))}
                         </tr>
@@ -265,10 +310,10 @@ export default function ScenarioCompare() {
                                 <td className="px-3 py-4 text-sm font-bold text-slate-700 bg-slate-50">{age}</td>
                                 {scenarioData.map(entry => (
                                     <React.Fragment key={`${entry.id}-${age}`}>
-                                        <td className="px-3 py-3">
+                                        <td className="px-3 py-3 min-w-[180px]">
                                             {entry.data ? renderAssetsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
                                         </td>
-                                        <td className="px-3 py-3">
+                                        <td className="px-3 py-3 min-w-[200px]">
                                             {entry.data ? renderEventsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
                                         </td>
                                     </React.Fragment>

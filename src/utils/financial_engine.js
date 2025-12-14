@@ -557,7 +557,6 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                     if (info && info.payment > 0) {
                         monthlyBreakdown.expenses.homeMortgage += info.payment;
                         propertyLoanPaymentRecorded.add(lid);
-                        totalActiveLoanBalance += info.balance || 0;
                     }
                 });
             });
@@ -583,10 +582,13 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
             const info = sched ? sched[monthKey] : null;
             const cutoff = loanSellCutoff[lid];
             if (cutoff && monthKey > cutoff) return;
+            const meta = data.loans[lid] || syntheticLoans[lid] || {};
+            const startKey = meta.inputs?.startDate ? meta.inputs.startDate.substring(0, 7) : null;
+            // Skip future-dated loans until their start month; keep them active so they begin later
+            if (startKey && monthKey < startKey) return;
             if (info) {
                 if (info.payment > 0) {
                     // Global Debt Service (loan payments are fixed; do not inflate)
-                    const meta = data.loans[lid] || syntheticLoans[lid] || {};
                     const ltype = meta.type || 'fixed';
                     const isPropertyLoan = meta.propertyLinked === true || !!meta.linkedPropertyId || ltype === 'mortgage' || propertyLoanIds.has(lid);
                     // For reporting: property-linked loan payments land in Home bucket (with impounds/HOA)
@@ -841,11 +843,12 @@ const updateComponents = (state, type, amount) => {
 };
 
 const applyGrowth = (dt, age, assumptions, state) => {
+    const cashRate = assumptions?.rates?.cash ?? 0.02; // default 2% for HYSA
     const grow = (type, rate) => {
         const amt = state[type] * rate;
         if (amt > 0) { state.components[type].growth += amt; state.annualFlows[type].growth += amt; state[type] += amt; }
     };
-    grow('cash', 0.01 * dt);
+    grow('cash', cashRate * dt);
     const r = getPortfolioReturn(age, assumptions) * dt;
     grow('joint', r); grow('inherited', r); grow('retirement', r);
 };

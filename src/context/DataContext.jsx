@@ -89,6 +89,8 @@ export const DataProvider = ({ children }) => {
     const replacer = () => {
       const seen = new WeakSet();
       return (key, value) => {
+        // Drop heavy/baked simulation output to avoid blowing localStorage quota
+        if (key === '__simulation_output' || key === '__assumptions_documentation') return undefined;
         if (typeof value === 'object' && value !== null) {
           // Skip DOM nodes / React fibers
           if (typeof Node !== 'undefined' && value instanceof Node) return undefined;
@@ -101,6 +103,11 @@ export const DataProvider = ({ children }) => {
     };
     try {
       const normalized = rebuildStoreScenarios(store);
+      // Remove baked simulation blobs and docs at the scenario level too, just in case
+      Object.values(normalized.scenarios || {}).forEach(s => {
+        if (s.__simulation_output) delete s.__simulation_output;
+        if (s.__assumptions_documentation) delete s.__assumptions_documentation;
+      });
       const serialized = JSON.stringify(normalized, replacer());
       if (serialized) localStorage.setItem(STORAGE_KEY, serialized);
     } catch (e) {

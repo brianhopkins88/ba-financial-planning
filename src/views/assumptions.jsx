@@ -5,11 +5,14 @@ import { Save, ChevronDown, ChevronRight, Copy, ArrowRight, Info } from 'lucide-
 import { TooltipHelp } from '../components/TooltipHelp';
 
 const NumberInput = ({ label, value, path, updateData, step = "0.01", suffix, helpText }) => {
+  // Fallback to context updater if one wasn't provided explicitly
+  const { actions } = useData();
+  const applyUpdate = updateData || actions?.updateScenarioData || (() => {});
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => { setLocalValue(value); }, [value]);
   const handleBlur = () => {
     const numericVal = parseFloat(localValue);
-    if (!isNaN(numericVal)) { updateData(path, numericVal); }
+    if (!isNaN(numericVal)) { applyUpdate(path, numericVal); }
     else { setLocalValue(value); }
   };
   return (
