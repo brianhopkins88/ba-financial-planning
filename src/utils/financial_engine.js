@@ -463,7 +463,19 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         const spouseGross = (data.income.spouse.grossForContrib || 0) * inflationMult;
         const primaryContribPct = incomeProfile.primary?.contribPercent ?? data.income.primary.contribPercent ?? 0;
         const spouseContribPct = incomeProfile.spouse?.contribPercent ?? data.income.spouse.contribPercent ?? 0;
-        const primaryMatchRate = Math.min(primaryContribPct, 0.06) * 0.5;
+
+        const computeMatchPct = (personId, contribPct, personData) => {
+            const defaultEnabled = personId === 'primary';
+            const matching = (personData && personData.matching) || {};
+            const enabled = matching.enabled !== undefined ? matching.enabled : defaultEnabled;
+            if (!enabled) return 0;
+            const capPct = matching.capPct !== undefined ? matching.capPct : 0.06;
+            const matchRate = matching.matchRate !== undefined ? matching.matchRate : 0.5;
+            return Math.min(contribPct, capPct) * matchRate;
+        };
+
+        const primaryMatchRate = computeMatchPct('primary', primaryContribPct, data.income.primary);
+        const spouseMatchRate = computeMatchPct('spouse', spouseContribPct, data.income.spouse);
 
         const selectRetirement = (ownerPref) => {
             if (retirementAssets.length === 0) return true;
@@ -485,7 +497,7 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         const spouseAllowed = spouseTarget ? (spouseTarget.owner === 'spouse' || spouseTarget.owner === 'joint' || !spouseTarget.owner) : selectRetirement('spouse');
 
         const primaryContrib = (primaryGross * workStatus.primary * (primaryContribPct + primaryMatchRate)) * dt;
-        const spouseContrib = (spouseGross * workStatus.spouse * spouseContribPct) * dt;
+        const spouseContrib = (spouseGross * workStatus.spouse * (spouseContribPct + spouseMatchRate)) * dt;
 
         const totalContrib = (primaryAllowed ? primaryContrib : 0) + (spouseAllowed ? spouseContrib : 0);
         if (totalContrib > 0) { updateComponents(state, 'retirement', totalContrib); state.retirement += totalContrib; }

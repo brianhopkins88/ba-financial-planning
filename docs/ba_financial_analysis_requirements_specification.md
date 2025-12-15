@@ -1,19 +1,26 @@
 # BA Financial Analysis – Requirements Specification
 
-**Version:** 3.0a (alpha)  
-**Date:** December 14, 2025  
-**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX/data integrity + v3.0a alpha features). Codebase is at **3.0 alpha** and still needs additional validation and testing.
+**Version:** 3.0.2 (beta)  
+**Date:** December 16, 2025  
+**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX/data integrity + v3.0 beta features + v3.0.2 hardening). Codebase is at **3.0.2 beta**; validation and test coverage are still required before marking stable.
 
 ------
 
 ## 0. Purpose And Planning Objective
-### 0.0 What’s New in v3.0a (alpha; requires further validation/testing)
-- Cash Flow header now surfaces `Property Expenses`, `Monthly Income`, `Monthly Expenses`, and `Surplus/Deficit` (replaces Total Burn card for the model month).
+### 0.0 What’s New in v3.0.2 (beta; needs validation/testing)
+- Cash Flow Manager now resolves the active **expense profile by burn-month**, so monthly burn tables reflect the profile effective for the selected month (not the base profile).
+- Import/Export hardening: application exports include only registry, scenarios, profiles, and assumptions (no DOM/resolved blobs); imports strip DOM/event noise and `resolvedData` to avoid crashes and quota blow-ups; persistence auto-disables on `QuotaExceededError` to prevent crash loops.
+- Revolving loan strategies: aggressive payoff schedules (extraPayments) are honored in simulation, enabling strategy-based payoffs (e.g., HELOC cleared when strategy dictates) and reflected in burn/ledger views.
+
+### 0.0a Previously Added in v3.0 (beta; needs validation/testing)
+- Cash Flow header surfaces `Property Expenses`, `Monthly Income`, `Monthly Expenses`, and `Surplus/Deficit` (replaces Total Burn card for the model month).
 - Property costs consolidated under a single Property Expenses card; profile home/impound rows only apply when a property is active.
-- Engine safeguards: property-linked loan payments stop after the property sell month; de-duplication prevents double-counting property-linked debt service.
+- Engine safeguards: property-linked loan payments stop after the property sell month; de-duplication prevents double-counting property-linked debt service; future-dated loans stay active until their start month (no premature payoff), and property-linked balances are not double-counted in Scenario Compare.
 - Waterfall data captured per month for future drilldowns; Balance Inspector messaging updated to reflect removal of the view button.
-- Scenario Compare module (left sidebar): up to three distinct scenarios side-by-side with income/expense profile start info, milestone-age net worth by asset/liability, and chronological event bullets.
-- Codebase is **3.0 alpha**; feature-complete for this round but still needs validation and test coverage before marking stable.
+- Scenario Compare: up to three distinct scenarios side-by-side with income/expense profile start info, milestone-age net worth by asset/liability, and chronological event bullets (live simulation only; no baked fallback).
+- 401k matching is configurable per person (enable/disable, cap %, match rate) and flows into the engine; spouse defaults to no match, primary defaults to enabled with cap 6% and 50% rate unless overridden.
+- Cash growth rate is configurable via assumptions (`rates.cash`), default 2% (HYSA-like), replacing the hard-coded 1%.
+- Codebase is **3.0.2 beta**; feature-complete for this round but still needs validation and test coverage before marking stable.
 
 ### 0.1 Primary Objective
 

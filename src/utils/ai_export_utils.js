@@ -1,6 +1,6 @@
 import { runFinancialSimulation } from './financial_engine.js';
 import pkg from 'lodash';
-const { cloneDeep } = pkg;
+const { cloneDeep, get } = pkg;
 
 const SYSTEM_RULES_DESCRIPTION = {
     "purpose": "Financial projection for retirement planning, analyzing solvency, assets, and cash flow over a 35-year horizon.",
@@ -19,106 +19,239 @@ const PARAMETER_DESCRIPTIONS = {
     "assumptions.market.initial": "Target investment return rate during the accumulation phase (pre-retirement).",
     "assumptions.market.terminal": "Target investment return rate during the preservation phase (late retirement).",
     "assumptions.property.baselineGrowth": "Base annual appreciation rate for real estate assets.",
-    // REFACTORED: Changed from legacy key to 'primary' for consistency with v1.3 Identity Refactor
     "income.primary.netSalary": "Annual take-home pay used for cash flow modeling.",
     "expenses.living": "Discretionary living expenses (food, entertainment, travel) excluding fixed bills.",
     "loans.mortgage": "Primary mortgage details. Principal reduction increases Net Worth; Interest is a sunk cost."
 };
 
-/**
- * Generates a full 'AI-Ready' export containing registry, scenarios,
- * their simulation runs, and descriptive metadata.
- */
-export const generateAIExport = (store) => {
-    // Rebuild scenarios with registry-linked assets/liabilities for consistency
-    const resolveScenario = (scen) => {
-        const resolved = cloneDeep(scen);
-        const links = resolved.links || { assets: [], liabilities: [], profiles: {} };
+const resolveScenario = (scen, store) => {
+    const resolved = cloneDeep(scen);
+    const links = resolved.links || { assets: [], liabilities: [], profiles: {} };
 
-        // Start with any existing scenario data so we preserve per-scenario overrides
-        const data = resolved.data ? cloneDeep(resolved.data) : {};
+    // Preserve scenario overrides but backfill linked registry assets/loans
+    const data = resolved.data ? cloneDeep(resolved.data) : {};
+    const existingAssets = data.assets?.accounts || {};
+    const mergedAssets = { ...existingAssets };
+    (links.assets || []).forEach(id => {
+        if (!mergedAssets[id] && store.registry?.assets?.[id]) {
+            mergedAssets[id] = cloneDeep(store.registry.assets[id]);
+        }
+    });
+    data.assets = { accounts: mergedAssets };
 
-        // Assets: keep what the scenario already has; add any linked-but-missing from registry
-        const existingAssets = data.assets?.accounts || {};
-        const mergedAssets = { ...existingAssets };
-        (links.assets || []).forEach(id => {
-            if (!mergedAssets[id] && store.registry?.assets?.[id]) {
-                mergedAssets[id] = cloneDeep(store.registry.assets[id]);
-            }
-        });
-        data.assets = { accounts: mergedAssets };
+    const existingLoans = data.loans || {};
+    const mergedLoans = { ...existingLoans };
+    (links.liabilities || []).forEach(id => {
+        if (!mergedLoans[id] && store.registry?.liabilities?.[id]) {
+            mergedLoans[id] = cloneDeep(store.registry.liabilities[id]);
+        }
+    });
+    data.loans = mergedLoans;
 
-        // Loans: keep existing; add any linked-but-missing from registry
-        const existingLoans = data.loans || {};
-        const mergedLoans = { ...existingLoans };
-        (links.liabilities || []).forEach(id => {
-            if (!mergedLoans[id] && store.registry?.liabilities?.[id]) {
-                mergedLoans[id] = cloneDeep(store.registry.liabilities[id]);
-            }
-        });
-        data.loans = mergedLoans;
+    data.income = data.income || {};
+    data.expenses = data.expenses || {};
+    data.income.profileSequence = links.profiles?.income || data.income.profileSequence || [];
+    data.expenses.profileSequence = links.profiles?.expenses || data.expenses.profileSequence || [];
 
-        // Profiles
-        data.income = data.income || {};
-        data.expenses = data.expenses || {};
-        data.income.profileSequence = links.profiles?.income || data.income.profileSequence || [];
-        data.expenses.profileSequence = links.profiles?.expenses || data.expenses.profileSequence || [];
+    resolved.data = data;
+    return resolved;
+};
 
-        resolved.data = data;
-        return resolved;
+const scrubScenario = (scen) => {
+    const clean = cloneDeep(scen);
+    delete clean.__simulation_output;
+    delete clean.__assumptions_documentation;
+    delete clean.resolvedData;
+    // Drop UI-only or transient flags if present
+    if (clean.ui) delete clean.ui;
+    // Strip DOM/event blobs that might have leaked into scenario data
+    const stripDomNoise = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        const noisyKeys = [
+            'view','nativeEvent','target','currentTarget','_reactName','_targetInst',
+            'eventPhase','bubbles','cancelable','timeStamp','isTrusted','detail',
+            'screenX','screenY','clientX','clientY','pageX','pageY',
+            'ctrlKey','shiftKey','altKey','metaKey','button','buttons','relatedTarget',
+            'movementX','movementY','which','charCode','keyCode','key','location',
+            'sourceCapabilities','composed','defaultPrevented'
+        ];
+        noisyKeys.forEach(k => { if (Object.prototype.hasOwnProperty.call(obj, k)) delete obj[k]; });
+    };
+    const scrubLoan = (loan) => {
+        if (!loan || typeof loan !== 'object') return;
+        stripDomNoise(loan);
+        if (loan.view) delete loan.view;
+    };
+    const scrubAsset = (asset) => {
+        if (!asset || typeof asset !== 'object') return;
+        stripDomNoise(asset);
+        if (asset.view) delete asset.view;
     };
 
+    if (clean.data?.loans) Object.values(clean.data.loans).forEach(scrubLoan);
+    if (clean.data?.assets?.accounts) Object.values(clean.data.assets.accounts).forEach(scrubAsset);
+
+    return clean;
+};
+
+const buildAnnualRollup = (timeline = []) => {
+    const annual = {};
+    timeline.forEach(item => {
+        const year = item.year;
+        if (!annual[year]) {
+            annual[year] = {
+                year,
+                age: item.age,
+                spouseAge: item.spouseAge,
+                income: 0,
+                expenses: 0,
+                netCashFlow: 0,
+                endingNetWorth: item.netWorth,
+                endingLiquid: item.balances?.liquid || 0,
+                endingProperty: item.balances?.property || 0,
+                endingDebt: (item.balances?.totalDebt || 0) + (item.balances?.reverseMortgage || 0),
+                insolvencyFlag: false,
+                shortfallMonths: 0
+            };
+        }
+        const target = annual[year];
+        target.income += item.income || 0;
+        target.expenses += item.expenses || 0;
+        target.netCashFlow += item.netCashFlow || 0;
+        target.endingNetWorth = item.netWorth;
+        target.endingLiquid = item.balances?.liquid || 0;
+        target.endingProperty = item.balances?.property || 0;
+        target.endingDebt = (item.balances?.totalDebt || 0) + (item.balances?.reverseMortgage || 0);
+        target.age = item.age;
+        target.spouseAge = item.spouseAge;
+        if ((item.shortfall || 0) > 0) {
+            target.insolvencyFlag = true;
+            target.shortfallMonths += 1;
+        }
+    });
+    return Object.values(annual).sort((a, b) => a.year - b.year);
+};
+
+const buildParameterNotes = (scenario) => {
+    const notes = {};
+    Object.entries(PARAMETER_DESCRIPTIONS).forEach(([path, desc]) => {
+        const val = get(scenario, `data.${path}`);
+        if (val !== undefined && val !== null) {
+            notes[path] = desc;
+        }
+    });
+    return Object.keys(notes).length ? notes : PARAMETER_DESCRIPTIONS;
+};
+
+/**
+ * Full application export (all state) for backups/restores.
+ */
+export const generateApplicationExport = (store) => {
+    const baseRegistry = cloneDeep(store.registry || { assets: {}, liabilities: {}, profiles: cloneDeep(store.profiles || {}) });
+    // Scrub registry to avoid DOM/event blobs
+    const cleanRegistry = () => {
+        const clean = cloneDeep(baseRegistry);
+        const stripDomNoise = (obj) => {
+            if (!obj || typeof obj !== 'object') return;
+            const noisyKeys = [
+                'view','nativeEvent','target','currentTarget','_reactName','_targetInst',
+                'eventPhase','bubbles','cancelable','timeStamp','isTrusted','detail',
+                'screenX','screenY','clientX','clientY','pageX','pageY',
+                'ctrlKey','shiftKey','altKey','metaKey','button','buttons','relatedTarget',
+                'movementX','movementY','which','charCode','keyCode','key','location',
+                'sourceCapabilities','composed','defaultPrevented'
+            ];
+            noisyKeys.forEach(k => { if (Object.prototype.hasOwnProperty.call(obj, k)) delete obj[k]; });
+        };
+        const scrubLoan = (loan) => {
+            if (!loan || typeof loan !== 'object') return;
+            stripDomNoise(loan);
+            if (loan.view) delete loan.view;
+            delete loan.resolvedData;
+        };
+        const scrubAsset = (asset) => {
+            if (!asset || typeof asset !== 'object') return;
+            stripDomNoise(asset);
+            if (asset.view) delete asset.view;
+            delete asset.resolvedData;
+        };
+        if (clean.liabilities) Object.values(clean.liabilities).forEach(scrubLoan);
+        if (clean.assets) Object.values(clean.assets).forEach(scrubAsset);
+        return clean;
+    };
+    const registryClean = cleanRegistry();
     const exportData = {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "2.1-AI-Enhanced",
-            exportVersion: "2.1"
+            appVersion: "3.0.2-beta",
+            exportVersion: "3.02-full"
         },
-        registry: store.registry || {},
-        profiles: store.registry?.profiles || store.profiles || {},
-        assumptions: store.registry?.assumptions || {},
-        scenarios: {},
-        __system_documentation: SYSTEM_RULES_DESCRIPTION
+        registry: registryClean,
+        profiles: registryClean.profiles || store.profiles || {},
+        assumptions: registryClean.assumptions || store.assumptions || {},
+        scenarios: {}
     };
 
-    // Iterate through EVERY scenario in memory
-    Object.values(store.scenarios).forEach(scenario => {
-        const resolvedScenario = resolveScenario(scenario);
-        // 1. Run the Simulation for this scenario
-        const simulation = runFinancialSimulation(resolvedScenario, exportData.profiles, store.registry);
+    Object.values(store.scenarios || {}).forEach(scenario => {
+        const cleaned = scrubScenario(scenario);
+        const resolvedScenario = resolveScenario(cleaned, { ...store, registry: registryClean });
+        exportData.scenarios[scenario.id] = resolvedScenario;
+    });
 
-        // 2. Prepare the Assumption Notes
-        const assumptionsDocs = {};
-        Object.entries(PARAMETER_DESCRIPTIONS).forEach(([key, desc]) => {
-            assumptionsDocs[key] = desc;
-        });
+    return JSON.stringify(exportData, null, 2);
+};
 
-        // 3. Construct the enriched scenario object
+/**
+ * Compressed AI analysis export: annual rollups + docs.
+ */
+export const generateAIAnalysisExport = (store) => {
+    const baseRegistry = store.registry || { assets: {}, liabilities: {}, profiles: cloneDeep(store.profiles || {}) };
+    const profiles = baseRegistry.profiles || store.profiles || {};
+    const exportData = {
+        meta: {
+            ...store.meta,
+            exportDate: new Date().toISOString(),
+            appVersion: "3.0.2-beta",
+            exportVersion: "3.02-ai",
+            mode: "ai-analysis"
+        },
+        registry: {
+            assets: baseRegistry.assets || {},
+            liabilities: baseRegistry.liabilities || {},
+            profiles
+        },
+        assumptions: baseRegistry.assumptions || store.assumptions || {},
+        documentation: {
+            systemRules: SYSTEM_RULES_DESCRIPTION,
+            parameterDescriptions: PARAMETER_DESCRIPTIONS
+        },
+        scenarios: {}
+    };
+
+    Object.values(store.scenarios || {}).forEach(scenario => {
+        const cleaned = scrubScenario(scenario);
+        const resolvedScenario = resolveScenario(cleaned, { ...store, registry: baseRegistry });
+        const simulation = runFinancialSimulation(resolvedScenario, profiles, baseRegistry);
+        const annualTimeline = buildAnnualRollup(simulation.timeline);
+        const events = (simulation.events || []).map(evt => ({
+            date: evt.date,
+            year: evt.date ? parseInt(evt.date.substring(0, 4), 10) : resolvedScenario.data?.assumptions?.timing?.startYear,
+            text: evt.text
+        }));
+
         exportData.scenarios[scenario.id] = {
-            ...scenario, // raw inputs and links/overrides
-            resolvedData: resolvedScenario.data, // explicit resolved data for transparency
+            id: scenario.id,
+            name: scenario.name,
+            meta: scenario.meta || {},
+            links: resolvedScenario.links || {},
+            data: resolvedScenario.data,
             textConfig: scenario.textConfig || { narrative: '', riskProfile: '', keyEvents: [] },
-
-            // AI METADATA (Prefixed with __ to indicate computed/informational data)
-            __simulation_output: {
-                timeline: simulation.timeline.map(t => ({
-                    year: t.year,
-                    month: t.month,
-                    age: t.age,
-                    netWorth: t.netWorth,
-                    liquidAssets: t.balances.liquid,
-                    totalDebt: t.balances.totalDebt,
-                    netCashFlow: t.netCashFlow,
-                    monthlyBurn: t.monthlyBurn,
-                    insolvencyOccurred: t.shortfall > 0
-                })),
-                events: simulation.events
+            simulation: {
+                annualTimeline,
+                events
             },
-            __assumptions_documentation: {
-                description: "Key parameters used in this scenario and their definitions.",
-                notes: assumptionsDocs
-            }
+            parameterNotes: buildParameterNotes(resolvedScenario)
         };
     });
 

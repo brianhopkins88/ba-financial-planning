@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
-import { generateAIExport } from '../utils/ai_export_utils';
+import { generateAIAnalysisExport, generateApplicationExport } from '../utils/ai_export_utils';
 import { LayoutDashboard, Receipt, Landmark, Settings, Plus, Save, MoreVertical, Upload, Download, RotateCcw, ChevronDown, Wallet, Database, Copy, Trash2, Pencil, Briefcase, Sliders, GitCompare } from 'lucide-react';
 
 export default function Sidebar({ currentView, setView }) {
@@ -9,12 +9,22 @@ export default function Sidebar({ currentView, setView }) {
   const [isScenarioListOpen, setIsScenarioListOpen] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleExportFull = () => {
-    const jsonString = generateAIExport(store);
+  const handleExportApplication = () => {
+    const jsonString = generateApplicationExport(store);
     const blob = new Blob([jsonString], { type: "application/json" });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `ba_planner_full_export_${new Date().toISOString().slice(0,10)}.json`;
+    link.download = `ba_planner_app_export_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    setIsMenuOpen(false);
+  };
+
+  const handleExportAIAnalysis = () => {
+    const jsonString = generateAIAnalysisExport(store);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `ba_planner_ai_export_${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     setIsMenuOpen(false);
   };
@@ -29,7 +39,8 @@ export default function Sidebar({ currentView, setView }) {
       setIsMenuOpen(false);
       if(action === 'save') { actions.saveAll(); alert("Session saved locally."); }
       if(action === 'save_as') handleSaveAs();
-      if(action === 'export') handleExportFull();
+      if(action === 'exportFull') handleExportApplication();
+      if(action === 'exportAI') handleExportAIAnalysis();
       if(action === 'create_blank') { const n = prompt("Name:"); if(n) actions.createBlankScenario(n); }
       if(action === 'upload') { fileInputRef.current.click(); }
       if(action === 'clear') {
@@ -84,7 +95,7 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v2.3</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v3.0.2 (beta)</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
@@ -92,7 +103,8 @@ export default function Sidebar({ currentView, setView }) {
                 <div className="absolute right-4 top-14 w-64 bg-white rounded-lg shadow-xl z-50 py-2 border border-slate-200 text-slate-700">
                     <button onClick={() => handleMenuItemClick('save')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Save size={14} className="text-blue-600"/> Save Session</button>
                     <button onClick={() => handleMenuItemClick('save_as')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Copy size={14} className="text-blue-400"/> Save Scenario As...</button>
-                    <button onClick={() => handleMenuItemClick('export')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export AI Data</button>
+                    <button onClick={() => handleMenuItemClick('exportFull')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Download size={14} className="text-green-600"/> Export Application Data</button>
+                    <button onClick={() => handleMenuItemClick('exportAI')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Database size={14} className="text-emerald-600"/> Export Data For AI Analysis</button>
                     <button onClick={() => handleMenuItemClick('upload')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Upload size={14} className="text-orange-500"/> Import / Restore</button>
                     <div className="h-px bg-slate-100 my-1"></div>
                     <button onClick={() => handleMenuItemClick('create_blank')} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-sm"><Plus size={14} className="text-slate-600"/> Create Blank Scenario</button>

@@ -24,6 +24,8 @@ function defaultPersonIncome() {
     bonus: { amount: 0, month: 1 },
     grossForContrib: 0,
     contribPercent: 0,
+    // Employer match config; default enables match for primary only (spouse set in ensureScenarioShape)
+    matching: { enabled: true, capPct: 0.06, matchRate: 0.5 },
     retirementAccountId: null,
     socialSecurity: { startAge: 0, monthlyAmount: 0 },
     pension: { monthlyAmount: 0 },
@@ -51,7 +53,7 @@ export const ensureScenarioShape = (scen = {}) => {
   merged.data.income = merged.data.income || { profileSequence: [] };
   merged.data.income.profileSequence = merged.data.income.profileSequence || [];
   merged.data.income.primary = { ...defaultPersonIncome(), ...(merged.data.income.primary || {}) };
-  merged.data.income.spouse = { ...defaultPersonIncome(), ...(merged.data.income.spouse || {}) };
+  merged.data.income.spouse = { ...defaultPersonIncome(), ...(merged.data.income.spouse || {}), matching: { enabled: false, ...(merged.data.income.spouse?.matching || {}) } };
   merged.data.income.workStatus = merged.data.income.workStatus || {};
   merged.data.expenses = merged.data.expenses || { profileSequence: [] };
   merged.data.assumptions = merged.data.assumptions || { timing: { startYear: 2026, startMonth: 1 } };

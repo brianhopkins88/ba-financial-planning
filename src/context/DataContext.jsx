@@ -5,7 +5,49 @@ import { format, parseISO, isValid } from 'date-fns';
 import { migrateStoreToV221 } from '../utils/migrate_to_v2';
 import { scenarioSkeleton, ensureScenarioShape } from '../utils/scenario_shape';
 
-const DataContext = createContext();
+// Provide a safe default context so consumers don't blow up if the provider fails to mount
+const noop = () => {};
+const defaultContextValue = {
+  store: { scenarios: {}, meta: {} },
+  activeScenario: ensureScenarioShape(),
+  simulationDate: new Date(2026, 0, 1),
+  isLoaded: false,
+  actions: {
+    switchScenario: noop,
+    createScenario: noop,
+    createBlankScenario: noop,
+    renameScenario: noop,
+    deleteScenario: noop,
+    updateScenarioMeta: noop,
+    updateScenarioData: noop,
+    updateScenarioDate: noop,
+    setSimulationMonth: noop,
+    saveAll: noop,
+    resetAll: noop,
+    addAsset: noop,
+    deleteAsset: noop,
+    addLoan: noop,
+    deleteLoan: noop,
+    batchUpdateLoanPayments: noop,
+    addLoanStrategy: noop,
+    renameLoanStrategy: noop,
+    duplicateLoanStrategy: noop,
+    deleteLoanStrategy: noop,
+    importData: noop,
+    saveProfile: noop,
+    updateProfile: noop,
+    updateProfileMeta: noop,
+    renameProfile: noop,
+    deleteProfile: noop,
+    toggleProfileInScenario: noop,
+    linkAssetToScenario: noop,
+    unlinkAssetFromScenario: noop,
+    linkLiabilityToScenario: noop,
+    unlinkLiabilityFromScenario: noop
+  }
+};
+
+const DataContext = createContext(defaultContextValue);
 
 // Storage key versioned for the v2.2.1 schema
 const STORAGE_KEY = 'ba_financial_planner_v2.2.1_registry';
@@ -82,10 +124,11 @@ export const DataProvider = ({ children }) => {
   });
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [persistenceDisabled, setPersistenceDisabled] = useState(false);
 
   // --- 2. PERSISTENCE ---
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || persistenceDisabled) return;
     const replacer = () => {
       const seen = new WeakSet();
       return (key, value) => {
@@ -112,8 +155,9 @@ export const DataProvider = ({ children }) => {
       if (serialized) localStorage.setItem(STORAGE_KEY, serialized);
     } catch (e) {
       console.warn("Persistence failed, skipping write to avoid crash", e);
+      if (e?.name === 'QuotaExceededError') setPersistenceDisabled(true);
     }
-  }, [store, isLoaded]);
+  }, [store, isLoaded, persistenceDisabled]);
 
   useEffect(() => {
       setIsLoaded(true);
@@ -223,6 +267,32 @@ export const DataProvider = ({ children }) => {
           return false;
       };
 
+      // Helper: strip event/window blobs accidentally captured in JSON exports
+      const stripDomNoise = (obj) => {
+          if (!obj || typeof obj !== 'object') return;
+          const noisyKeys = [
+              'view','nativeEvent','target','currentTarget','_reactName','_targetInst',
+              'eventPhase','bubbles','cancelable','timeStamp','isTrusted','detail',
+              'screenX','screenY','clientX','clientY','pageX','pageY',
+              'ctrlKey','shiftKey','altKey','metaKey','button','buttons','relatedTarget',
+              'movementX','movementY','which','charCode','keyCode','key','location',
+              'sourceCapabilities','composed','defaultPrevented'
+          ];
+          noisyKeys.forEach(k => { if (Object.prototype.hasOwnProperty.call(obj, k)) delete obj[k]; });
+      };
+
+      const scrubLoan = (loan) => {
+          if (!loan || typeof loan !== 'object') return;
+          stripDomNoise(loan);
+          if (loan.view) delete loan.view;
+      };
+
+      const scrubAsset = (asset) => {
+          if (!asset || typeof asset !== 'object') return;
+          stripDomNoise(asset);
+          if (asset.view) delete asset.view;
+      };
+
       // 1. MIGRATE LEGACY KEYS (Dick/Jane -> Primary/Spouse)
       const fixIncomeObject = (incomeObj, contextName) => {
           if (!incomeObj) return;
@@ -258,12 +328,19 @@ export const DataProvider = ({ children }) => {
       // Fix Scenarios
       if (fixed.scenarios) {
           Object.values(fixed.scenarios).forEach(scen => {
+              // Drop computed/heavy blocks
+              if (scen.resolvedData) delete scen.resolvedData;
+
               // Safety: Ensure data block exists
               if (!scen.data) scen.data = {};
 
               // Strip AI Metadata
               delete scen.__simulation_output;
               delete scen.__assumptions_documentation;
+
+              // Strip DOM/event noise from assets/loans
+              if (scen.data.loans) Object.values(scen.data.loans).forEach(scrubLoan);
+              if (scen.data.assets?.accounts) Object.values(scen.data.assets.accounts).forEach(scrubAsset);
 
               // Rename PII in Name
               if (scen.name && scen.name.includes("Dick")) scen.name = scen.name.replace("Dick", "Primary");
@@ -287,6 +364,12 @@ export const DataProvider = ({ children }) => {
                   fixIncomeObject(prof.data, `Profile: ${prof.name}`);
               }
           });
+      }
+
+      // Registry cleanup: strip DOM/event blobs from assets and liabilities
+      if (fixed.registry) {
+          if (fixed.registry.liabilities) Object.values(fixed.registry.liabilities).forEach(scrubLoan);
+          if (fixed.registry.assets) Object.values(fixed.registry.assets).forEach(scrubAsset);
       }
 
       return fixed;
@@ -716,4 +799,7 @@ export const DataProvider = ({ children }) => {
   );
 };
 
-export const useData = () => useContext(DataContext);
+export const useData = () => {
+  const ctx = useContext(DataContext);
+  return ctx || defaultContextValue;
+};

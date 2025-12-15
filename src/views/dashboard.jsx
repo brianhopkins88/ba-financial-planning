@@ -118,6 +118,11 @@ export default function Dashboard() {
 
     // --- 3. CALCULATE METRICS ---
     const lastPoint = timeline[timeline.length - 1] || {};
+    const endingCash = lastPoint.balances?.cash || 0;
+    const endingJoint = lastPoint.balances?.joint || 0;
+    const endingInherited = lastPoint.balances?.inherited || 0;
+    const endingRetirement = lastPoint.balances?.retirement || 0;
+    const endingLiquid = endingCash + endingJoint + endingInherited + endingRetirement;
     const firstPoint = timeline[0] || {};
 
     const startNW = firstPoint.netWorth || 0;
@@ -140,8 +145,8 @@ export default function Dashboard() {
                 />
                 <MetricCard
                     label="Ending Liquidity"
-                    value={`$${Math.round((lastPoint.balances?.liquid || 0)/1000)}k`}
-                    sublabel="Cash + Joint Accounts"
+                    value={`$${Math.round(endingLiquid/1000)}k`}
+                    sublabel="Cash + Joint + Inherited + Retirement"
                     icon={DollarSign}
                     color="blue"
                 />

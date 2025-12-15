@@ -57,7 +57,7 @@ const CarryingList = ({ title, items, onAdd, onUpdate, onRemove, helper }) => (
         <div className="space-y-1">
             {items.length === 0 && <div className="text-xs text-slate-400 italic">No items defined.</div>}
             {items.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2 py-1">
+                <div key={item.id || idx} className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2 py-1">
                     <input
                         className="flex-1 text-sm text-slate-700 bg-transparent outline-none"
                         value={item.name}

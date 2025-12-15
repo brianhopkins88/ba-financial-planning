@@ -511,6 +511,17 @@ const IncomeEditor = ({ editData, actions, globalStart, retirementOptions = [] }
                                 <NumberInput label="Gross (401k Calc)" helpText="Base for contribution %" value={editData.primary.grossForContrib} onChange={(v) => actions.updateScenarioData('income.primary.grossForContrib', v)} step="1000" />
                                 <NumberInput label="401k Contrib Rate" helpText="Decimal, e.g. 0.12 = 12%" value={editData.primary.contribPercent} onChange={(v) => actions.updateScenarioData('income.primary.contribPercent', v)} step="0.01" suffix="dec" />
                             </div>
+                            <div className="grid grid-cols-3 gap-3 items-end">
+                                <div className="col-span-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Employer Match</label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <input type="checkbox" className="h-4 w-4" checked={editData.primary.matching?.enabled !== false} onChange={(e) => actions.updateScenarioData('income.primary.matching.enabled', e.target.checked)} />
+                                        <span className="text-xs text-slate-600">Enable</span>
+                                    </div>
+                                </div>
+                                <NumberInput label="Match Cap (dec)" helpText="Max salary pct eligible for match" value={editData.primary.matching?.capPct ?? 0.06} onChange={(v) => actions.updateScenarioData('income.primary.matching.capPct', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Match Rate" helpText="Employer match on eligible pct" value={editData.primary.matching?.matchRate ?? 0.5} onChange={(v) => actions.updateScenarioData('income.primary.matching.matchRate', v)} step="0.01" suffix="dec" />
+                            </div>
                             <div className="grid grid-cols-1">
                                 <div className="flex flex-col space-y-1">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase">Contribution Account</label>
@@ -549,6 +560,17 @@ const IncomeEditor = ({ editData, actions, globalStart, retirementOptions = [] }
                             <div className="grid grid-cols-2 gap-4">
                                 <NumberInput label="Gross (401k Calc)" helpText="Base for contribution %" value={editData.spouse.grossForContrib} onChange={(v) => actions.updateScenarioData('income.spouse.grossForContrib', v)} step="1000" />
                                 <NumberInput label="401k Contrib Rate" helpText="Decimal, e.g. 0.12 = 12%" value={editData.spouse.contribPercent} onChange={(v) => actions.updateScenarioData('income.spouse.contribPercent', v)} step="0.01" suffix="dec" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 items-end">
+                                <div className="col-span-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Employer Match</label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <input type="checkbox" className="h-4 w-4" checked={editData.spouse.matching?.enabled === true} onChange={(e) => actions.updateScenarioData('income.spouse.matching.enabled', e.target.checked)} />
+                                        <span className="text-xs text-slate-600">Enable</span>
+                                    </div>
+                                </div>
+                                <NumberInput label="Match Cap (dec)" helpText="Max salary pct eligible for match" value={editData.spouse.matching?.capPct ?? 0.06} onChange={(v) => actions.updateScenarioData('income.spouse.matching.capPct', v)} step="0.01" suffix="dec" />
+                                <NumberInput label="Match Rate" helpText="Employer match on eligible pct" value={editData.spouse.matching?.matchRate ?? 0.0} onChange={(v) => actions.updateScenarioData('income.spouse.matching.matchRate', v)} step="0.01" suffix="dec" />
                             </div>
                             <div className="grid grid-cols-1">
                                 <div className="flex flex-col space-y-1">
@@ -1125,15 +1147,18 @@ export default function CashFlow() {
 
   // Data Loading
   const incomeData = activeScenario.data.income || {};
-  const expenseData = activeScenario.data.expenses || {};
-  // Ensure defaults
-  expenseData.bills = expenseData.bills || [];
-  expenseData.home = expenseData.home || [];
-  expenseData.living = expenseData.living || [];
-  expenseData.impounds = expenseData.impounds || [];
-  expenseData.oneOffs = expenseData.oneOffs || [];
-  expenseData.retirementBrackets = expenseData.retirementBrackets || {};
-  expenseData.linkedLoanIds = expenseData.linkedLoanIds || [];
+  const rawExpenseData = activeScenario.data.expenses || {};
+  const hydrateExpenseData = useCallback((data = {}) => {
+      const d = { ...data };
+      d.bills = d.bills || [];
+      d.home = d.home || [];
+      d.living = d.living || [];
+      d.impounds = d.impounds || [];
+      d.oneOffs = d.oneOffs || [];
+      d.retirementBrackets = d.retirementBrackets || {};
+      d.linkedLoanIds = d.linkedLoanIds || [];
+      return d;
+  }, []);
 
   const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
   const globalStart = assumptions.timing || { startYear: 2026, startMonth: 1 };
@@ -1188,11 +1213,74 @@ export default function CashFlow() {
       return store.profiles[effectiveItem.profileId] ? { ...store.profiles[effectiveItem.profileId], ...effectiveItem } : null;
   }, [activeScenario, activeTab, simulationDate, store.profiles]);
 
+  // Profile resolution helpers need to be defined before effects that reference them
+  const getProfileSequenceForType = useCallback((type) => {
+      return activeScenario.links?.profiles?.[type] || activeScenario.data?.[type]?.profileSequence || [];
+  }, [activeScenario]);
+
+  const getActiveProfileEntryForDate = useCallback((type, dateStr) => {
+      const seq = getProfileSequenceForType(type);
+      const activeItems = seq
+        .filter(item => item.isActive && item.startDate && item.startDate <= dateStr)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate));
+      return activeItems[0] || null;
+  }, [getProfileSequenceForType]);
+
+  const resolveProfileForDate = useCallback((type, dateStr, returnId = false) => {
+      const match = getActiveProfileEntryForDate(type, dateStr);
+      if (!match) return returnId ? '' : 'Not set';
+      if (returnId) return match.profileId || '';
+      return store.profiles[match.profileId]?.name || match.profileId || 'Not set';
+  }, [getActiveProfileEntryForDate, store.profiles]);
+
+  const getEffectiveProfileSelection = useCallback((type, dateStr) => {
+      const timelineMatch = getActiveProfileEntryForDate(type, dateStr);
+      const timelineId = timelineMatch?.profileId || '';
+      const savedId = savedProfileSelections[type];
+
+      // If saved selection is the same "era" (same or later start date), keep it; otherwise follow the latest active profile.
+      if (savedId && timelineMatch) {
+          const savedEntry = getProfileSequenceForType(type).find(item =>
+              item.profileId === savedId && item.isActive && item.startDate && item.startDate <= dateStr
+          );
+          if (savedEntry && savedEntry.startDate >= timelineMatch.startDate) return savedId;
+      }
+
+      return timelineId || savedId || '';
+  }, [getActiveProfileEntryForDate, getProfileSequenceForType, savedProfileSelections]);
+
+  // Burn / planning month state; define before any effects that reference it
+  const [burnDate, setBurnDate] = useState(simulationDate);
+  const normalizedBurnDate = useMemo(() => {
+      const candidate = burnDate || simulationDate || new Date();
+      const d = candidate instanceof Date ? candidate : new Date(candidate);
+      if (Number.isNaN(d.valueOf())) return new Date();
+      return d;
+  }, [burnDate, simulationDate]);
+  const burnMonthKey = format(normalizedBurnDate, 'yyyy-MM');
+
+  // Resolve expense data for the current burn month from the active profile (fallback to scenario base)
+  const expenseSequence = useMemo(() => getProfileSequenceForType('expenses'), [getProfileSequenceForType]);
+  const baseExpenseData = useMemo(() => hydrateExpenseData(rawExpenseData), [rawExpenseData, hydrateExpenseData]);
+  const expenseData = useMemo(() => {
+      const dateStr = `${burnMonthKey}-01`;
+      const activeEntry = getActiveProfileEntryForDate('expenses', dateStr);
+      if (!activeEntry) return baseExpenseData;
+      const sortedActive = expenseSequence.filter(i => i.isActive && i.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const baseEntry = sortedActive[0];
+      const isBase = baseEntry && activeEntry && baseEntry.profileId === activeEntry.profileId;
+      if (isBase) return baseExpenseData;
+      const prof = store.profiles[activeEntry.profileId];
+      if (prof?.data) return hydrateExpenseData({ ...prof.data, profileSequence: expenseSequence });
+      return baseExpenseData;
+  }, [burnMonthKey, getActiveProfileEntryForDate, expenseSequence, store.profiles, hydrateExpenseData, baseExpenseData]);
+
   // Sync editingProfileId to saved selection or timeline active profile when switching tabs or if none is set
   useEffect(() => {
-      const cached = savedProfileSelections[activeTab];
+      const currentDateStr = `${burnMonthKey}-01`;
+      const effectiveSelection = getEffectiveProfileSelection(activeTab, currentDateStr);
       const fallback = timelineActiveProfile?.id;
-      const nextId = cached || fallback || null;
+      const nextId = effectiveSelection || fallback || null;
       const tabChanged = prevActiveTabRef.current !== activeTab;
 
       // Only override on tab switch, or if nothing is selected yet
@@ -1201,7 +1289,7 @@ export default function CashFlow() {
       }
 
       if (tabChanged) prevActiveTabRef.current = activeTab;
-  }, [activeTab, savedProfileSelections, timelineActiveProfile, editingProfileId]);
+  }, [activeTab, burnMonthKey, getEffectiveProfileSelection, timelineActiveProfile, editingProfileId]);
 
   // Persist selected profile per tab so it survives navigation
   useEffect(() => {
@@ -1227,14 +1315,6 @@ export default function CashFlow() {
 
   // Load Loans for Payment Calculation for the Editor
   const currentMonthKey = format(simulationDate, 'yyyy-MM');
-  const [burnDate, setBurnDate] = useState(simulationDate);
-  const normalizedBurnDate = useMemo(() => {
-      const candidate = burnDate || simulationDate || new Date();
-      const d = candidate instanceof Date ? candidate : new Date(candidate);
-      if (Number.isNaN(d.valueOf())) return new Date();
-      return d;
-  }, [burnDate, simulationDate]);
-
   const propertySellDateByLoanId = useMemo(() => {
       const map = {};
       Object.values(activeScenario.data.assets.accounts || {}).forEach(asset => {
@@ -1254,7 +1334,6 @@ export default function CashFlow() {
       }
   }, [simulationDate, burnDate]);
 
-  const burnMonthKey = format(normalizedBurnDate, 'yyyy-MM');
   const loansMap = activeScenario.data.loans || {};
 
   const loanCalculations = useMemo(() => {
@@ -1377,16 +1456,6 @@ export default function CashFlow() {
   const totalLiving = calculateTotal(expenseData.living);
   const totalOneOffsThisMonth = useMemo(() => expenseData.oneOffs.filter(item => item.date === currentMonthKey).reduce((sum, item) => sum + (item.amount || 0), 0), [expenseData.oneOffs, currentMonthKey]);
   const propertyCosts = useMemo(() => getPropertyCostsForMonth(burnMonthKey), [getPropertyCostsForMonth, burnMonthKey]);
-  const resolveProfileForDate = useCallback((type, dateStr, returnId = false) => {
-      const seq = activeScenario.links?.profiles?.[type] || activeScenario.data?.[type]?.profileSequence || [];
-      const activeItems = seq
-        .filter(item => item.isActive && item.startDate && item.startDate <= dateStr)
-        .sort((a, b) => b.startDate.localeCompare(a.startDate));
-      if (activeItems.length === 0) return returnId ? '' : 'Not set';
-      const match = activeItems[0];
-      if (returnId) return match.profileId || '';
-      return store.profiles[match.profileId]?.name || match.profileId || 'Not set';
-  }, [activeScenario, store.profiles]);
 
   const expenseProfiles = useMemo(() => Object.values(store.profiles).filter(p => p.type === 'expenses'), [store.profiles]);
   const incomeProfiles = useMemo(() => Object.values(store.profiles).filter(p => p.type === 'income'), [store.profiles]);
@@ -1675,7 +1744,7 @@ export default function CashFlow() {
                       <span className="text-[10px] uppercase font-bold text-blue-500">Expense Profile</span>
                       <select
                           className="border border-blue-200 rounded px-2 py-1 text-sm font-semibold text-slate-700"
-                          value={savedProfileSelections.expenses || resolveProfileForDate('expenses', `${burnMonthKey}-01`, true) || ''}
+                          value={getEffectiveProfileSelection('expenses', `${burnMonthKey}-01`) || ''}
                           onChange={(e) => switchProfileForType('expenses', e.target.value)}
                       >
                           {expenseProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -1686,7 +1755,7 @@ export default function CashFlow() {
                       <span className="text-[10px] uppercase font-bold text-emerald-500">Income Profile</span>
                       <select
                           className="border border-emerald-200 rounded px-2 py-1 text-sm font-semibold text-slate-700"
-                          value={savedProfileSelections.income || resolveProfileForDate('income', `${burnMonthKey}-01`, true) || ''}
+                          value={getEffectiveProfileSelection('income', `${burnMonthKey}-01`) || ''}
                           onChange={(e) => switchProfileForType('income', e.target.value)}
                       >
                           {incomeProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

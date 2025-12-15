@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { generateAIExport } from '../src/utils/ai_export_utils.js';
+import { generateAIAnalysisExport, generateApplicationExport } from '../src/utils/ai_export_utils.js';
 
 const store = {
   meta: { version: '2.0', activeScenarioId: 'scen_1' },
@@ -29,11 +29,21 @@ const store = {
   }
 };
 
-const exported = JSON.parse(generateAIExport(store));
-const scen = exported.scenarios.scen_1;
+const fullExport = JSON.parse(generateApplicationExport(store));
+const scenFull = fullExport.scenarios.scen_1;
 
-assert.ok(exported.registry.assets.acct_cash, 'registry included in export');
-assert.ok(scen.resolvedData.assets.accounts.acct_cash, 'resolved data includes linked asset');
-assert.ok(Array.isArray(scen.__simulation_output.timeline), 'simulation output exists');
+assert.equal(fullExport.meta.exportVersion, '3.02-full');
+assert.ok(fullExport.registry.assets.acct_cash, 'registry included in full export');
+assert.ok(scenFull.data.assets.accounts.acct_cash, 'full export resolves linked asset into data');
+assert.ok(!scenFull.__simulation_output, 'full export strips computed simulation blobs');
 
-console.log('ai_export_utils test passed');
+const aiExport = JSON.parse(generateAIAnalysisExport(store));
+const scenAi = aiExport.scenarios.scen_1;
+
+assert.equal(aiExport.meta.mode, 'ai-analysis');
+assert.ok(Array.isArray(scenAi.simulation.annualTimeline), 'AI export includes annual timeline');
+assert.ok(scenAi.simulation.annualTimeline.length > 0, 'annual timeline has entries');
+assert.ok(!('month' in scenAi.simulation.annualTimeline[0]), 'annual timeline is compressed without monthly data');
+assert.ok(aiExport.documentation.parameterDescriptions['assumptions.inflation.general'], 'parameter descriptions retained');
+
+console.log('ai_export_utils tests passed');
