@@ -229,8 +229,8 @@ export const generateApplicationExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.2.0-beta",
-            exportVersion: "3.2.0-full"
+            appVersion: "3.2.1",
+            exportVersion: "3.2.1-full"
         },
         registry: registryClean,
         profiles: registryClean.profiles || store.profiles || {},
@@ -257,8 +257,8 @@ export const generateAIAnalysisExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.2.0-beta",
-            exportVersion: "3.2.0-ai",
+            appVersion: "3.2.1",
+            exportVersion: "3.2.1-ai",
             mode: "ai-analysis"
         },
         registry: {

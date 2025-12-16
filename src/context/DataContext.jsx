@@ -61,14 +61,37 @@ const filterValidProfiles = (seq = [], catalog = {}) => {
 
 const rebuildScenarioFromRegistry = (scenario, registry, profileCatalog) => {
   const scen = ensureScenarioShape(scenario);
+
+  // Preserve scenario-local edits and only backfill missing linked items from the registry.
+  const existingAssets = scen.data?.assets?.accounts || {};
+  const existingLoans = scen.data?.loans || {};
+  const assetIds = new Set([...(scen.links.assets || []), ...Object.keys(existingAssets)]);
+  const loanIds = new Set([...(scen.links.liabilities || []), ...Object.keys(existingLoans)]);
+
   const rebuiltAssets = {};
+  assetIds.forEach(id => {
+    const scenarioAsset = existingAssets[id];
+    const registryAsset = registry?.assets?.[id];
+    const source = scenarioAsset ? cloneDeep(scenarioAsset) : (registryAsset ? cloneDeep(registryAsset) : null);
+    if (source) {
+      if (!source.id) source.id = id;
+      rebuiltAssets[id] = source;
+    }
+  });
+
   const rebuiltLoans = {};
-  (scen.links.assets || []).forEach(id => {
-    if (registry?.assets?.[id]) rebuiltAssets[id] = cloneDeep(registry.assets[id]);
+  loanIds.forEach(id => {
+    const scenarioLoan = existingLoans[id];
+    const registryLoan = registry?.liabilities?.[id];
+    const source = scenarioLoan ? cloneDeep(scenarioLoan) : (registryLoan ? cloneDeep(registryLoan) : null);
+    if (source) {
+      if (!source.id) source.id = id;
+      rebuiltLoans[id] = source;
+    }
   });
-  (scen.links.liabilities || []).forEach(id => {
-    if (registry?.liabilities?.[id]) rebuiltLoans[id] = cloneDeep(registry.liabilities[id]);
-  });
+
+  scen.links.assets = Array.from(assetIds);
+  scen.links.liabilities = Array.from(loanIds);
   scen.data.assets = { accounts: rebuiltAssets };
   scen.data.loans = rebuiltLoans;
 
@@ -337,6 +360,20 @@ export const DataProvider = ({ children }) => {
           if (asset.view) delete asset.view;
       };
 
+      const removeInvalidEntities = (collection = {}, label = 'item') => {
+          const cleaned = {};
+          Object.entries(collection || {}).forEach(([key, val]) => {
+              const effectiveId = (val && val.id) ? val.id : key;
+              const badId = !effectiveId || effectiveId === 'undefined' || effectiveId === 'null' || effectiveId === 'NaN';
+              if (badId) {
+                  console.warn(`Pruned invalid ${label} with id '${key}' during import`);
+                  return;
+              }
+              cleaned[effectiveId] = { ...val, id: effectiveId };
+          });
+          return cleaned;
+      };
+
       // 1. MIGRATE LEGACY KEYS (Dick/Jane -> Primary/Spouse)
       const fixIncomeObject = (incomeObj, contextName) => {
           if (!incomeObj) return;
@@ -412,8 +449,34 @@ export const DataProvider = ({ children }) => {
 
       // Registry cleanup: strip DOM/event blobs from assets and liabilities
       if (fixed.registry) {
-          if (fixed.registry.liabilities) Object.values(fixed.registry.liabilities).forEach(scrubLoan);
-          if (fixed.registry.assets) Object.values(fixed.registry.assets).forEach(scrubAsset);
+          if (fixed.registry.liabilities) {
+              Object.values(fixed.registry.liabilities).forEach(scrubLoan);
+              fixed.registry.liabilities = removeInvalidEntities(fixed.registry.liabilities, 'liability');
+          }
+          if (fixed.registry.assets) {
+              Object.values(fixed.registry.assets).forEach(scrubAsset);
+              fixed.registry.assets = removeInvalidEntities(fixed.registry.assets, 'asset');
+          }
+      }
+
+      // Scenario-level cleanup: drop invalid asset/loan stubs and sync links to valid registry items
+      if (fixed.scenarios) {
+          Object.values(fixed.scenarios).forEach(scen => {
+              if (scen?.data?.assets?.accounts) {
+                  scen.data.assets.accounts = removeInvalidEntities(scen.data.assets.accounts, 'scenario asset');
+              }
+              if (scen?.data?.loans) {
+                  scen.data.loans = removeInvalidEntities(scen.data.loans, 'scenario loan');
+              }
+              if (scen?.links) {
+                  if (scen.links.assets && fixed.registry?.assets) {
+                      scen.links.assets = scen.links.assets.filter(id => !!fixed.registry.assets[id]);
+                  }
+                  if (scen.links.liabilities && fixed.registry?.liabilities) {
+                      scen.links.liabilities = scen.links.liabilities.filter(id => !!fixed.registry.liabilities[id]);
+                  }
+              }
+          });
       }
 
       return fixed;

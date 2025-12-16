@@ -175,7 +175,7 @@ export default function Assets() {
      if (!simulation?.timeline || !activeAsset) return { annual: [] };
      const key = activeAsset.type === 'property' ? 'property' : activeAsset.type;
      const annualMap = {};
-     const monthName = (m) => new Date(2000, m - 1, 1).toLocaleString('default', { month: 'short' });
+      const monthName = (m) => new Date(2000, m - 1, 1).toLocaleString('default', { month: 'short' });
 
      let prevBalance = null;
      let prevFlow = null;
@@ -186,38 +186,42 @@ export default function Assets() {
          const balance = row.balances?.[key] ?? 0;
          const flow = row.flows?.[key] || { deposits: 0, withdrawals: 0, growth: 0 };
          const month = row.month || 0;
+         const isNewYear = prevYear !== year;
+
+         // Annual flows reset every January; when the year changes, compare against zero so the first month's flows are captured.
+         const baselineFlow = isNewYear ? { deposits: 0, withdrawals: 0, growth: 0 } : (prevFlow || { deposits: 0, withdrawals: 0, growth: 0 });
+         const flowDelta = {
+             deposits: flow.deposits - (baselineFlow?.deposits || 0),
+             withdrawals: flow.withdrawals - (baselineFlow?.withdrawals || 0),
+             growth: flow.growth - (baselineFlow?.growth || 0),
+         };
+
+         const monthStartBalance = prevBalance !== null
+             ? prevBalance
+             : (balance - flowDelta.deposits + flowDelta.withdrawals - flowDelta.growth);
 
          if (!annualMap[year]) {
              annualMap[year] = {
                  year,
-                 startBalance: balance,
+                 startBalance: monthStartBalance,
                  endBalance: balance,
                  deposits: 0,
                  withdrawals: 0,
                  growth: 0,
                  months: []
              };
-             prevBalance = balance;
-             prevFlow = flow;
-             prevYear = year;
-             return;
          }
 
-         // compute month deltas using cumulative annual flows
-         const flowDelta = {
-             deposits: flow.deposits - (prevFlow?.deposits || 0),
-             withdrawals: flow.withdrawals - (prevFlow?.withdrawals || 0),
-             growth: flow.growth - (prevFlow?.growth || 0),
-         };
          const monthEntry = {
              month,
              monthLabel: month === 0 ? 'Start' : monthName(month),
-             startBalance: prevBalance,
+             startBalance: monthStartBalance,
              deposits: flowDelta.deposits,
              withdrawals: flowDelta.withdrawals,
              growth: flowDelta.growth,
              endBalance: balance
          };
+
          annualMap[year].months.push(monthEntry);
          annualMap[year].deposits += flowDelta.deposits;
          annualMap[year].withdrawals += flowDelta.withdrawals;

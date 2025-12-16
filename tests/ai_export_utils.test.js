@@ -32,7 +32,7 @@ const store = {
 const fullExport = JSON.parse(generateApplicationExport(store));
 const scenFull = fullExport.scenarios.scen_1;
 
-assert.equal(fullExport.meta.exportVersion, '3.2.0-full');
+assert.equal(fullExport.meta.exportVersion, '3.2.1-full');
 assert.ok(fullExport.registry.assets.acct_cash, 'registry included in full export');
 assert.ok(scenFull.data.assets.accounts.acct_cash, 'full export resolves linked asset into data');
 assert.ok(!scenFull.__simulation_output, 'full export strips computed simulation blobs');
