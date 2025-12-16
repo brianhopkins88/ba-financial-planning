@@ -1,12 +1,27 @@
-# React + Vite
+# BA Financial Analysis
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Client-side financial planning app that simulates household solvency over a configurable horizon using a registry-first scenario model and strict monthly engine.
 
-Currently, two official plugins are available:
+## Runbook
+- Install: `npm install`
+- Develop: `npm run dev` (Vite with HMR)
+- Test: `npm test`
+- Lint: `npm run lint`
+- Build: `npm run build`
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Key Features
+- Registry/Scenario overlay with field-level overrides for assets, liabilities, and profiles.
+- Cash Flow Manager with monthly burn, projections, and property-aware housing costs.
+- Dashboard, Ledger, Loans, Assets, Scenario Builder, and Scenario Compare views.
+- Configurable assumptions (inflation, property insurance, healthcare inflation, market glide path, projection horizon).
+- Exports: full app snapshot or AI analysis export; folder-based save when supported.
+- Help & User Manual (via sidebar three-dot menu) with searchable topics and quick-start guidance.
 
-## Expanding the ESLint configuration
+## Data & Persistence
+- Local storage persistence with v2.2.1 schema and migrations for older snapshots.
+- Import/Export strips DOM noise and keeps registry canonical; scenarios rebuilt from registry + overrides.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Tips
+- Set start month and horizon in Assumptions; navigation clamps to the scenario window.
+- Duplicate profiles before major edits; keep an export backup in your chosen folder.
+- Use the horizon jump buttons to inspect end-of-plan solvency and reverse-mortgage behavior.

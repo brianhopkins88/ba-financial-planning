@@ -95,6 +95,8 @@ export default function Assumptions() {
 
       {/* 1. GLOBAL SETTINGS */}
       <Section title="1. Global Economic Assumptions" defaultOpen={true}>
+        <NumberInput label="Projection Horizon" value={assumptions.horizonYears ?? assumptions.horizon ?? 35} path="assumptions.horizonYears" step="1" suffix="yrs"
+            helpText="Total years to simulate across dashboard, cash flow, and navigation." />
         <NumberInput label="General Inflation (CPI)" value={assumptions.inflation.general} path="assumptions.inflation.general" step="0.001" suffix="dec"
             helpText="Applied monthly to living and bills." />
         <NumberInput label="Medical Inflation" value={assumptions.inflation.medical} path="assumptions.inflation.medical" step="0.001" suffix="dec"

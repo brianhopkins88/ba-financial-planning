@@ -3,7 +3,7 @@ import pkg from 'lodash';
 const { cloneDeep, get } = pkg;
 
 const SYSTEM_RULES_DESCRIPTION = {
-    "purpose": "Financial projection for retirement planning, analyzing solvency, assets, and cash flow over a 35-year horizon.",
+    "purpose": "Financial projection for retirement planning, analyzing solvency, assets, and cash flow over a configurable horizon (default 35 years).",
     "methodology": {
         "engine": "Strict monthly deterministic simulation over horizonYears (default 35).",
         "inflation": "Smooth monthly compounding using elapsed months / 12; property tax/insurance use dedicated rates.",
@@ -23,6 +23,23 @@ const PARAMETER_DESCRIPTIONS = {
     "expenses.living": "Discretionary living expenses (food, entertainment, travel) excluding fixed bills.",
     "loans.mortgage": "Primary mortgage details. Principal reduction increases Net Worth; Interest is a sunk cost."
 };
+
+const CALCULATION_NOTES = [
+    "Monthly deterministic cash-flow simulation with compounding between deposits/withdrawals; inflation applied monthly to eligible categories.",
+    "Asset growth follows an age-based glide path that linearly tapers returns from the 'initial' rate toward 'terminal' between ages 60 and taperEndAge.",
+    "Withdrawal waterfall: cover deficits using Cash -> Joint -> Inherited IRA -> 401k -> Reverse Mortgage draws; any remainder is flagged as shortfall.",
+    "Reverse mortgage accrues interest monthly; if loan-to-value exceeds the age-based limit, the model forces a property sale and routes net proceeds to Joint.",
+    "Property taxes/insurance accrue monthly using their specific rates; healthcare ramps via medical inflation if configured.",
+    "Shortfall months count when required spending cannot be met even after the waterfall and reverse mortgage access."
+];
+
+const AI_ANALYSIS_INSTRUCTIONS = [
+    "Focus on solvency: inspect monthlyTimeline.shortfall counts and the annualTimeline insolvencyFlag/shortfallMonths to find stress periods.",
+    "Compare trajectories: plot or summarize netWorth, liquid balances (cash + joint), and debts over time for each scenario.",
+    "Check sustainability: verify incomes cover expenses before retirement and that post-retirement withdrawals align with glide path expectations.",
+    "Watch housing dynamics: track reverseMortgage balances and property values to identify forced-sale events in simulation.events.",
+    "Summarize sensitivities: call out which parameters (in parameterNotes and assumptions) most influence divergences between scenarios."
+];
 
 const resolveScenario = (scen, store) => {
     const resolved = cloneDeep(scen);
@@ -132,6 +149,34 @@ const buildAnnualRollup = (timeline = []) => {
     return Object.values(annual).sort((a, b) => a.year - b.year);
 };
 
+const buildMonthlyRollup = (timeline = []) => {
+    return (timeline || []).map(item => {
+        const balances = item.balances || {};
+        return {
+            year: item.year,
+            month: item.month,
+            date: item.date,
+            age: item.age,
+            spouseAge: item.spouseAge,
+            income: item.income,
+            expenses: item.expenses,
+            netCashFlow: item.netCashFlow,
+            netWorth: item.netWorth,
+            balances: {
+                cash: balances.cash || 0,
+                joint: balances.joint || 0,
+                inherited: balances.inherited || 0,
+                retirement: balances.retirement || 0,
+                property: balances.property || 0,
+                reverseMortgage: balances.reverseMortgage || 0,
+                totalDebt: balances.totalDebt || 0,
+                liquid: balances.liquid || 0
+            },
+            shortfall: item.shortfall || 0
+        };
+    });
+};
+
 const buildParameterNotes = (scenario) => {
     const notes = {};
     Object.entries(PARAMETER_DESCRIPTIONS).forEach(([path, desc]) => {
@@ -184,8 +229,8 @@ export const generateApplicationExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.0.2-beta",
-            exportVersion: "3.02-full"
+            appVersion: "3.2.0-beta",
+            exportVersion: "3.2.0-full"
         },
         registry: registryClean,
         profiles: registryClean.profiles || store.profiles || {},
@@ -212,8 +257,8 @@ export const generateAIAnalysisExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.0.2-beta",
-            exportVersion: "3.02-ai",
+            appVersion: "3.2.0-beta",
+            exportVersion: "3.2.0-ai",
             mode: "ai-analysis"
         },
         registry: {
@@ -224,7 +269,9 @@ export const generateAIAnalysisExport = (store) => {
         assumptions: baseRegistry.assumptions || store.assumptions || {},
         documentation: {
             systemRules: SYSTEM_RULES_DESCRIPTION,
-            parameterDescriptions: PARAMETER_DESCRIPTIONS
+            parameterDescriptions: PARAMETER_DESCRIPTIONS,
+            calculationNotes: CALCULATION_NOTES,
+            analysisInstructions: AI_ANALYSIS_INSTRUCTIONS
         },
         scenarios: {}
     };
@@ -234,6 +281,7 @@ export const generateAIAnalysisExport = (store) => {
         const resolvedScenario = resolveScenario(cleaned, { ...store, registry: baseRegistry });
         const simulation = runFinancialSimulation(resolvedScenario, profiles, baseRegistry);
         const annualTimeline = buildAnnualRollup(simulation.timeline);
+        const monthlyTimeline = buildMonthlyRollup(simulation.timeline);
         const events = (simulation.events || []).map(evt => ({
             date: evt.date,
             year: evt.date ? parseInt(evt.date.substring(0, 4), 10) : resolvedScenario.data?.assumptions?.timing?.startYear,
@@ -249,7 +297,9 @@ export const generateAIAnalysisExport = (store) => {
             textConfig: scenario.textConfig || { narrative: '', riskProfile: '', keyEvents: [] },
             simulation: {
                 annualTimeline,
-                events
+                monthlyTimeline,
+                events,
+                notes: "Monthly timeline is trimmed to core numeric fields (income, expenses, netCashFlow, netWorth, balances, shortfall) to avoid large blobs."
             },
             parameterNotes: buildParameterNotes(resolvedScenario)
         };

@@ -3,9 +3,20 @@ import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine.js';
 import { ensureScenarioShape } from '../utils/scenario_shape.js';
 import { cloneDeep } from 'lodash';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const ages = [65, 70, 75, 80, 85, 90];
+const metricOptions = [
+    { value: 'netWorth', label: 'Net Worth (default)' },
+    { value: 'cash', label: 'Cash' },
+    { value: 'joint', label: 'Joint' },
+    { value: 'inherited', label: 'Inherited' },
+    { value: 'retirement', label: 'Retirement' },
+    { value: 'property', label: 'Property' },
+    { value: 'reverseMortgage', label: 'Reverse Mortgage' },
+    { value: 'totalDebt', label: 'Total Debt' }
+];
 
 const resolveScenario = (scenario, registry) => {
     const resolved = ensureScenarioShape(cloneDeep(scenario));
@@ -142,6 +153,11 @@ const ValueBlock = ({ label, value, tone = 'plain' }) => {
 export default function ScenarioCompare() {
     const { store, activeScenario } = useData();
     const scenarioOptions = useMemo(() => Object.values(store.scenarios || {}), [store.scenarios]);
+    const scenarioNames = useMemo(() => {
+        const map = {};
+        scenarioOptions.forEach(s => { map[s.id] = s.name; });
+        return map;
+    }, [scenarioOptions]);
 
     const initialIds = useMemo(() => {
         const ids = scenarioOptions.map(s => s.id);
@@ -150,6 +166,8 @@ export default function ScenarioCompare() {
     }, [scenarioOptions, activeScenario]);
 
     const [selected, setSelected] = useState(initialIds);
+    const [chartMetric, setChartMetric] = useState('netWorth');
+    const [expandedAges, setExpandedAges] = useState(() => new Set());
 
     // Keep selection aligned with active scenario if nothing is selected yet
     useEffect(() => {
@@ -167,6 +185,17 @@ export default function ScenarioCompare() {
         next[idx] = id;
         setSelected(next);
     }, [selected]);
+
+    const toggleAgeRow = useCallback((age) => {
+        setExpandedAges(prev => {
+            const next = new Set(prev);
+            if (next.has(age)) next.delete(age); else next.add(age);
+            return next;
+        });
+    }, []);
+
+    const expandAllYears = useCallback(() => setExpandedAges(new Set(ages)), []);
+    const collapseAllYears = useCallback(() => setExpandedAges(new Set()), []);
 
     const addColumn = () => {
         if (selected.length >= 3) return;
@@ -198,6 +227,34 @@ export default function ScenarioCompare() {
             }
         });
     }, [selected, store, activeScenario]);
+
+    const chartData = useMemo(() => {
+        const merged = new Map();
+        scenarioData.forEach(entry => {
+            const timeline = entry.data?.simulation?.timeline || [];
+            timeline.forEach(point => {
+                const monthIndex = (point.month || 1) - 1;
+                const date = new Date(point.year, monthIndex, 1);
+                const key = `${point.year}-${String(point.month || 1).padStart(2, '0')}`;
+                if (!merged.has(key)) {
+                    merged.set(key, { dateLabel: date.toLocaleString('default', { month: 'short', year: 'numeric' }), dateValue: date.getTime() });
+                }
+                const value = chartMetric === 'netWorth' ? point.netWorth : point.balances?.[chartMetric];
+                merged.get(key)[entry.id] = Math.round(value || 0);
+            });
+        });
+        return Array.from(merged.values())
+            .sort((a, b) => a.dateValue - b.dateValue)
+            .map(row => {
+                const { dateValue, ...rest } = row;
+                return rest;
+            });
+    }, [scenarioData, chartMetric]);
+
+    const chartMetricLabel = metricOptions.find(opt => opt.value === chartMetric)?.label || 'Net Worth';
+    const allExpanded = expandedAges.size === ages.length;
+    const anyExpanded = expandedAges.size > 0;
+    const chartColors = ['#2563eb', '#16a34a', '#f59e0b'];
 
     const renderAssetsCell = (simulation, scen, age) => {
         const snap = pickSnapshotByAge(simulation, scen, age);
@@ -239,13 +296,80 @@ export default function ScenarioCompare() {
                     <h1 className="text-2xl font-bold text-slate-800">Scenario Comparison</h1>
                     <p className="text-sm text-slate-500">Select up to three scenarios and compare profiles, net worth milestones, and major events side-by-side.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={expandAllYears}
+                            disabled={allExpanded}
+                            className={`px-3 py-2 text-sm rounded border ${allExpanded ? 'text-slate-400 border-slate-200 bg-slate-50' : 'text-slate-700 border-slate-300 hover:bg-slate-100'}`}
+                        >
+                            Expand All
+                        </button>
+                        <button
+                            onClick={collapseAllYears}
+                            disabled={!anyExpanded}
+                            className={`px-3 py-2 text-sm rounded border ${!anyExpanded ? 'text-slate-400 border-slate-200 bg-slate-50' : 'text-slate-700 border-slate-300 hover:bg-slate-100'}`}
+                        >
+                            Collapse All
+                        </button>
+                    </div>
                     {selected.length < 3 && (
                         <button onClick={addColumn} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white text-sm rounded shadow hover:bg-blue-700">
                             <Plus size={14}/> Add Scenario
                         </button>
                     )}
                 </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-6">
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                    <div>
+                        <div className="text-sm font-semibold text-slate-800">Trajectory chart</div>
+                        <p className="text-xs text-slate-500">Net worth by default; switch metrics to inspect individual balance components.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[11px] uppercase text-slate-500 font-bold">Metric</span>
+                        <select
+                            value={chartMetric}
+                            onChange={(e) => setChartMetric(e.target.value)}
+                            className="border border-slate-300 rounded px-3 py-2 text-sm bg-white text-slate-700"
+                        >
+                            {metricOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+                {chartData.length ? (
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="dateLabel" tick={{ fontSize: 12, fill: '#475569' }} minTickGap={24} />
+                                <YAxis tick={{ fontSize: 12, fill: '#475569' }} tickFormatter={(v) => `$${Math.round(v / 1000).toLocaleString()}k`} />
+                                <Tooltip
+                                    formatter={(value) => [`$${Math.round(value).toLocaleString()}`, chartMetricLabel]}
+                                    labelFormatter={(label) => label}
+                                />
+                                <Legend />
+                                {scenarioData.filter(entry => entry.data?.simulation?.timeline?.length).map((entry, idx) => (
+                                    <Line
+                                        key={entry.id}
+                                        type="monotone"
+                                        dataKey={entry.id}
+                                        name={scenarioNames[entry.id] || `Scenario ${idx + 1}`}
+                                        stroke={chartColors[idx % chartColors.length]}
+                                        strokeWidth={2}
+                                        dot={false}
+                                        isAnimationActive={false}
+                                    />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <div className="text-sm text-slate-500">No chart data available for the selected scenarios.</div>
+                )}
             </div>
 
             <div className="overflow-auto border border-slate-200 rounded-xl bg-white shadow-sm">
@@ -305,21 +429,60 @@ export default function ScenarioCompare() {
                         </tr>
                     </thead>
                     <tbody>
-                        {ages.map(age => (
-                            <tr key={age} className="border-b border-slate-100 align-top">
-                                <td className="px-3 py-4 text-sm font-bold text-slate-700 bg-slate-50">{age}</td>
-                                {scenarioData.map(entry => (
-                                    <React.Fragment key={`${entry.id}-${age}`}>
-                                        <td className="px-3 py-3 min-w-[180px]">
-                                            {entry.data ? renderAssetsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
+                        {ages.map(age => {
+                            const isOpen = expandedAges.has(age);
+                            return (
+                                <React.Fragment key={age}>
+                                    <tr className="border-b border-slate-100 bg-white">
+                                        <td className="px-3 py-3 text-sm font-bold text-slate-700 bg-slate-50">
+                                            <button
+                                                onClick={() => toggleAgeRow(age)}
+                                                className="flex items-center gap-2 text-slate-700"
+                                                title={isOpen ? 'Collapse year details' : 'Expand year details'}
+                                            >
+                                                {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                                <span>Age {age}</span>
+                                            </button>
                                         </td>
-                                        <td className="px-3 py-3 min-w-[200px]">
-                                            {entry.data ? renderEventsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
-                                        </td>
-                                    </React.Fragment>
-                                ))}
-                            </tr>
-                        ))}
+                                        {scenarioData.map(entry => {
+                                            const snap = entry.data ? pickSnapshotByAge(entry.data.simulation, entry.data.scenario, age) : null;
+                                            const netWorth = snap ? Math.round(snap.netWorth || 0).toLocaleString() : null;
+                                            const eventCount = entry.data ? eventsUpToAge(entry.data.simulation, entry.data.scenario, age).length : 0;
+                                            return (
+                                                <td key={`${entry.id}-summary-${age}`} colSpan={2} className="px-3 py-3 min-w-[200px]">
+                                                    {snap ? (
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="text-sm font-semibold text-slate-800">${netWorth}</div>
+                                                            <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                                <span>{eventCount} events</span>
+                                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-[11px]">Summary</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-xs text-slate-400">No data</div>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                    {isOpen && (
+                                        <tr className="border-b border-slate-100 align-top">
+                                            <td className="px-3 py-4 text-xs font-semibold text-slate-500 bg-slate-50">Details</td>
+                                            {scenarioData.map(entry => (
+                                                <React.Fragment key={`${entry.id}-${age}`}>
+                                                    <td className="px-3 py-3 min-w-[180px]">
+                                                        {entry.data ? renderAssetsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
+                                                    </td>
+                                                    <td className="px-3 py-3 min-w-[200px]">
+                                                        {entry.data ? renderEventsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
+                                                    </td>
+                                                </React.Fragment>
+                                            ))}
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

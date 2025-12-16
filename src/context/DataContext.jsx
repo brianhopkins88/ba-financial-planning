@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import initialData from '../data/application_data.json';
 import { cloneDeep, set, get } from 'lodash';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, addMonths, isAfter, isBefore } from 'date-fns';
 import { migrateStoreToV221 } from '../utils/migrate_to_v2';
 import { scenarioSkeleton, ensureScenarioShape } from '../utils/scenario_shape';
 
@@ -55,7 +55,11 @@ const PREVIOUS_STORAGE_KEY = 'ba_financial_planner_v2.1_registry';
 const LEGACY_STORAGE_KEY = 'ba_financial_planner_v2.0_registry';
 const OLDEST_STORAGE_KEY = 'ba_financial_planner_v1.4_primary_spouse';
 
-const rebuildScenarioFromRegistry = (scenario, registry) => {
+const filterValidProfiles = (seq = [], catalog = {}) => {
+  return (seq || []).filter(item => item?.profileId && catalog[item.profileId]);
+};
+
+const rebuildScenarioFromRegistry = (scenario, registry, profileCatalog) => {
   const scen = ensureScenarioShape(scenario);
   const rebuiltAssets = {};
   const rebuiltLoans = {};
@@ -67,13 +71,26 @@ const rebuildScenarioFromRegistry = (scenario, registry) => {
   });
   scen.data.assets = { accounts: rebuiltAssets };
   scen.data.loans = rebuiltLoans;
+
+  const catalog = profileCatalog || registry?.profiles || {};
+  scen.links.profiles = scen.links.profiles || { income: [], expenses: [] };
+  const cleanIncome = filterValidProfiles(scen.links.profiles.income, catalog);
+  const cleanExpenses = filterValidProfiles(scen.links.profiles.expenses, catalog);
+  scen.links.profiles.income = cleanIncome;
+  scen.links.profiles.expenses = cleanExpenses;
+  if (!scen.data.income) scen.data.income = {};
+  if (!scen.data.expenses) scen.data.expenses = {};
+  scen.data.income.profileSequence = cleanIncome;
+  scen.data.expenses.profileSequence = cleanExpenses;
+
   return scen;
 };
 
 const rebuildStoreScenarios = (store) => {
   const next = cloneDeep(store);
+  const profileCatalog = store.registry?.profiles || store.profiles || {};
   Object.keys(next.scenarios || {}).forEach(k => {
-    next.scenarios[k] = rebuildScenarioFromRegistry(next.scenarios[k], next.registry);
+    next.scenarios[k] = rebuildScenarioFromRegistry(next.scenarios[k], next.registry, profileCatalog);
   });
   return next;
 };
@@ -175,6 +192,7 @@ export const DataProvider = ({ children }) => {
   const activeScenario = useMemo(() => {
       const scen = ensureScenarioShape(activeScenarioRaw);
       const links = scen.links || { assets: [], liabilities: [], profiles: {} };
+      const profileCatalog = store.registry?.profiles || store.profiles || {};
       // Start with any scenario data already present to preserve overrides
       const existingAssets = scen.data?.assets?.accounts || {};
       const assets = { ...existingAssets };
@@ -205,16 +223,42 @@ export const DataProvider = ({ children }) => {
       // Profile sequences stay in scen.links
       if (!scen.data.income) scen.data.income = {};
       if (!scen.data.expenses) scen.data.expenses = {};
-      scen.data.income.profileSequence = links.profiles?.income || scen.data.income.profileSequence || [];
-      scen.data.expenses.profileSequence = links.profiles?.expenses || scen.data.expenses.profileSequence || [];
+      const cleanIncome = filterValidProfiles(links.profiles?.income || scen.data.income.profileSequence, profileCatalog);
+      const cleanExpenses = filterValidProfiles(links.profiles?.expenses || scen.data.expenses.profileSequence, profileCatalog);
+      if (!scen.links.profiles) scen.links.profiles = { income: [], expenses: [] };
+      scen.links.profiles.income = cleanIncome;
+      scen.links.profiles.expenses = cleanExpenses;
+      scen.data.income.profileSequence = cleanIncome;
+      scen.data.expenses.profileSequence = cleanExpenses;
 
       return scen;
-  }, [activeScenarioRaw, store.registry]);
+  }, [activeScenarioRaw, store.registry, store.profiles]);
 
   const [simulationDate, setSimulationDate] = useState(() => {
       const savedDateStr = activeScenario?.data?.assumptions?.currentModelDate || activeScenario?.data?.globals?.currentModelDate;
       return (savedDateStr && isValid(parseISO(savedDateStr))) ? parseISO(savedDateStr) : new Date(2026, 0, 1);
   });
+
+  const timing = activeScenario?.data?.assumptions?.timing || { startYear: 2026, startMonth: 1 };
+  const horizonYears = activeScenario?.data?.assumptions?.horizonYears || activeScenario?.data?.assumptions?.horizon || 35;
+
+  const scenarioWindow = useMemo(() => {
+      const startDate = new Date(timing.startYear || 2026, (timing.startMonth || 1) - 1, 1);
+      const totalMonths = Math.max(1, horizonYears) * 12;
+      const endDate = addMonths(startDate, totalMonths - 1);
+      return { startDate, endDate, totalMonths };
+  }, [timing.startYear, timing.startMonth, horizonYears]);
+
+  const clampToWindow = useCallback((date) => {
+      if (!date || !isValid(date)) return scenarioWindow.startDate;
+      if (isBefore(date, scenarioWindow.startDate)) return scenarioWindow.startDate;
+      if (isAfter(date, scenarioWindow.endDate)) return scenarioWindow.endDate;
+      return date;
+  }, [scenarioWindow]);
+
+  useEffect(() => {
+      setSimulationDate(prev => clampToWindow(prev));
+  }, [clampToWindow]);
 
   // Safety: if active scenario id is missing (e.g., deleted), repair pointer to first available
   useEffect(() => {
@@ -430,7 +474,18 @@ export const DataProvider = ({ children }) => {
       updateScenarioData('assumptions.timing', { startYear: parseInt(y), startMonth: parseInt(m) });
   };
 
-  const setSimulationMonth = (val) => setSimulationDate(val);
+  const setSimulationMonth = (val) => {
+      setSimulationDate(prev => {
+          const nextRaw = typeof val === 'function' ? val(prev) : val;
+          let candidate = nextRaw;
+          if (!(candidate instanceof Date)) {
+              if (typeof candidate === 'string') candidate = parseISO(candidate);
+              else if (typeof candidate === 'number') candidate = new Date(candidate);
+          }
+          if (!isValid(candidate)) return clampToWindow(prev);
+          return clampToWindow(candidate);
+      });
+  };
   const saveAll = () => { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); return true; };
 
   const resetAll = () => {
@@ -696,7 +751,7 @@ export const DataProvider = ({ children }) => {
           }
           next.meta = { ...(next.meta || {}), activeScenarioId: activeId };
 
-          return next;
+          return rebuildStoreScenarios(next);
       });
   };
 

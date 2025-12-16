@@ -58,6 +58,7 @@ export const ensureScenarioShape = (scen = {}) => {
   merged.data.expenses = merged.data.expenses || { profileSequence: [] };
   merged.data.assumptions = merged.data.assumptions || { timing: { startYear: 2026, startMonth: 1 } };
   merged.data.assumptions.timing = merged.data.assumptions.timing || { startYear: 2026, startMonth: 1 };
+  if (!merged.data.assumptions.horizonYears) merged.data.assumptions.horizonYears = merged.data.assumptions.horizon || 35;
 
   merged.links = merged.links || { assets: [], liabilities: [], profiles: { income: [], expenses: [] } };
   merged.links.assets = merged.links.assets || [];

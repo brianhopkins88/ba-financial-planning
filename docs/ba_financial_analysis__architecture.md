@@ -745,3 +745,5 @@ This is implemented as a straightforward selector and aggregator in the UI layer
   - Location-based tax rules.
 - **Cloud Sync (Opt-In)**
   - Encrypted remote storage for Registry + Scenarios, retaining current client-side architecture as default.
+- **Cash Sweep Rule**
+  - Reintroduce an excess-cash sweep that automatically moves surplus cash above a user-defined floor into the joint investment account each month.

@@ -103,6 +103,7 @@ export default function Assets() {
   const accounts = activeScenario.data.assets.accounts || {};
   const loans = activeScenario.data.loans || {};
   const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
+  const horizonYears = assumptions.horizonYears || assumptions.horizon || 35;
   const thresholds = assumptions.thresholds || { cashMin: 15000, cashMax: 30000, jointMin: 0, retirementMin: 300000 };
   const registryAssets = store.registry?.assets || {};
 
@@ -240,7 +241,7 @@ export default function Assets() {
      if (soldEvent) endYear = parseInt(soldEvent.date.substring(0, 4));
 
      if (activeAsset.type === 'property') {
-         const rawData = calculateAssetGrowth(activeAsset, assumptions, loans, 35);
+         const rawData = calculateAssetGrowth(activeAsset, assumptions, loans, horizonYears);
          return rawData.map(row => {
              const isStart = row.year === assumptions.timing.startYear;
              const targetMonth = isStart ? 0 : 12;
@@ -277,8 +278,8 @@ export default function Assets() {
 
   const iraTableData = useMemo(() => {
       if(activeAsset?.type !== 'inherited') return [];
-      return calculateAssetGrowth(activeAsset, activeScenario.data.assumptions || {}, loans, 15);
-  }, [activeAsset, activeScenario, loans]);
+      return calculateAssetGrowth(activeAsset, activeScenario.data.assumptions || {}, loans, horizonYears);
+  }, [activeAsset, activeScenario, loans, horizonYears]);
 
   const isFutureProperty = useMemo(() => {
       if(activeAsset?.type !== 'property') return false;

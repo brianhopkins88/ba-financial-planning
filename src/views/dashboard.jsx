@@ -64,7 +64,7 @@ const EventLog = ({ events }) => (
         </div>
         <div className="p-0 overflow-y-auto max-h-[300px]">
             {events.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 italic">No critical events detected in 35-year run.</div>
+                <div className="p-8 text-center text-slate-400 italic">No critical events detected in {horizonYears}-year run.</div>
             ) : (
                 <table className="w-full text-sm text-left">
                     <tbody className="divide-y divide-slate-50">
@@ -87,6 +87,8 @@ const EventLog = ({ events }) => (
 
 export default function Dashboard() {
     const { activeScenario, store } = useData();
+    const assumptions = activeScenario.data.assumptions || activeScenario.data.globals || {};
+    const horizonYears = assumptions.horizonYears || assumptions.horizon || 35;
 
     // --- 1. RUN SIMULATION ---
     const simulation = useMemo(() => {
@@ -137,7 +139,7 @@ export default function Dashboard() {
             {/* TOP METRICS */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <MetricCard
-                    label="Proj. Net Worth (35yr)"
+                    label={`Proj. Net Worth (${horizonYears}yr)`}
                     value={`$${(endNW / 1000000).toFixed(2)}M`}
                     sublabel={`Growth: +$${(nwGrowth / 1000000).toFixed(2)}M`}
                     icon={TrendingUp}
@@ -160,7 +162,7 @@ export default function Dashboard() {
                 <MetricCard
                     label="Plan Status"
                     value={isSolvent ? "Solvent" : "Review"}
-                    sublabel="35-Year Horizon"
+                    sublabel={`${horizonYears}-Year Horizon`}
                     icon={Activity}
                     color={isSolvent ? "green" : "red"}
                 />
