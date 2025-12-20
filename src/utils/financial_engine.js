@@ -2,26 +2,56 @@ import { addMonths, getYear, getMonth, format, isAfter, parseISO, isValid, diffe
 import { calculateRevolvingLoan, calculateFixedLoan } from './loan_math.js';
 import { calculateAssetGrowth } from './asset_math.js';
 
+const normalizeDateString = (value) => {
+    if (!value) return null;
+    const cleaned = String(value).split('T')[0];
+    const parts = cleaned.split('-');
+    if (parts.length === 1) return cleaned;
+    const year = parts[0];
+    const month = (parts[1] || '01').padStart(2, '0');
+    const day = (parts[2] || '01').padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const parseDateSafe = (value) => {
+    const normalized = normalizeDateString(value);
+    if (!normalized) return null;
+    const parsed = parseISO(normalized);
+    return isValid(parsed) ? parsed : null;
+};
+
+const isProfileActive = (item) => item?.isActive !== false;
+
 // --- HELPER: Smart Profile Resolution ---
 // This prioritizes the local "Draft" data if the simulation is running
 // in the same period as the base profile, ensuring immediate feedback for edits.
-const getEffectiveProfile = (sequence, dateStr, profiles, localData) => {
+const getEffectiveProfile = (sequence, dateStr, profiles, localData, startDateStr) => {
     // 1. If no sequence, default to local data
     if (!sequence || sequence.length === 0) return localData;
 
     // 2. Find the active profile item for this simulation date
-    const activeItems = sequence.filter(item => item.isActive);
-    const candidates = activeItems.filter(item => item.startDate <= dateStr);
+    const targetDate = parseDateSafe(dateStr);
+    const fallbackDate = startDateStr || dateStr;
+    const activeItems = sequence
+        .map((item, idx) => ({ ...item, parsed: parseDateSafe(item.startDate || fallbackDate), idx }))
+        .filter(item => isProfileActive(item));
+    const candidates = activeItems.filter(item => item.parsed && targetDate && !isAfter(item.parsed, targetDate));
 
     // Sort by date descending (latest start date first)
-    candidates.sort((a, b) => b.startDate.localeCompare(a.startDate));
+    candidates.sort((a, b) => {
+        if (a.parsed.getTime() !== b.parsed.getTime()) return b.parsed - a.parsed;
+        return b.idx - a.idx;
+    });
     const currentMatch = candidates[0];
 
     if (!currentMatch) return localData; // No profile active yet, use local defaults
 
     // 3. Determine if this is the "Base" profile (the first one in the chain)
     // We assume the user is editing the base profile in the main view.
-    const sortedByDate = [...activeItems].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const sortedByDate = [...activeItems].filter(item => item.parsed).sort((a, b) => {
+        if (a.parsed.getTime() !== b.parsed.getTime()) return a.parsed - b.parsed;
+        return a.idx - b.idx;
+    });
     const baseItem = sortedByDate[0];
 
     // 4. CRITICAL FIX: If the current timeline profile IS the base profile,
@@ -85,6 +115,7 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
     const startYear = parseInt(assumptions.timing.startYear);
     const startMonth = parseInt(assumptions.timing.startMonth);
     const startDate = new Date(startYear, startMonth - 1, 1);
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
     const horizonYears = assumptions.horizonYears || assumptions.horizon || 35;
     const totalMonths = horizonYears * 12;
 
@@ -258,8 +289,8 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
         }
 
         // Parameters - USE SMART PROFILE RESOLUTION (early so taxRate is available for funding gross-up)
-        const incomeProfile = getEffectiveProfile(data.income.profileSequence, dateStr, profiles, data.income);
-        const expenseProfile = getEffectiveProfile(data.expenses.profileSequence, dateStr, profiles, data.expenses);
+        const incomeProfile = getEffectiveProfile(data.income.profileSequence, dateStr, profiles, data.income, startDateStr);
+        const expenseProfile = getEffectiveProfile(data.expenses.profileSequence, dateStr, profiles, data.expenses, startDateStr);
 
         const workStatus = getWorkStatus(currentYear, incomeProfile, data.income.workStatus);
         const taxRate = getTaxRate(workStatus, assumptions);
@@ -606,12 +637,10 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                     // For reporting: property-linked loan payments land in Home bucket (with impounds/HOA)
                     if (isPropertyLoan && hasActiveProperty) {
                         // Avoid double-counting if the payment was already captured via the property-linked fallback above.
-                        if (propertyLoanPaymentRecorded.has(lid)) {
-                            totalActiveLoanBalance += info.balance || 0;
-                            return;
+                        if (!propertyLoanPaymentRecorded.has(lid)) {
+                            monthlyBreakdown.expenses.homeMortgage += info.payment;
+                            propertyLoanPaymentRecorded.add(lid);
                         }
-                        monthlyBreakdown.expenses.homeMortgage += info.payment;
-                        propertyLoanPaymentRecorded.add(lid);
                     } else {
                         monthlyBreakdown.expenses.otherDebt += info.payment;
                     }

@@ -12,8 +12,8 @@ export const migrateStoreToV2 = (input) => {
   if (!input || typeof input !== 'object') return input;
   const store = cloneDeep(input);
 
-  // Idempotent: if already on 2.0 with a registry, return as-is
-  if (store.meta?.version && store.meta.version.startsWith('2') && store.registry) return store;
+  // Idempotent: if already on 2.x or 3.x with a registry, return as-is
+  if (store.meta?.version && (store.meta.version.startsWith('2') || store.meta.version.startsWith('3')) && store.registry) return store;
 
   // Pick a source scenario (active or first) to seed the registry
   const scenarioKeys = Object.keys(store.scenarios || {});
@@ -70,7 +70,7 @@ export const migrateStoreToV21 = (input) => {
   const store = cloneDeep(base);
   const dataReview = [];
 
-  if (store.meta?.version === '2.1') return store;
+  if (store.meta?.version === '2.1' || store.meta?.version?.startsWith('3')) return store;
 
   const ensureAssumptionsDefaults = (assumptions = {}) => {
     const next = { ...assumptions };
@@ -159,7 +159,7 @@ export const migrateStoreToV221 = (input) => {
   if (!base || typeof base !== 'object') return input;
   const store = cloneDeep(base);
 
-  if (store.meta?.version === '2.2.1') return store;
+  if (store.meta?.version === '2.2.1' || store.meta?.version?.startsWith('3')) return store;
 
   const ensureCarryingCosts = (asset) => {
       if (!asset || asset.type !== 'property') return;
@@ -175,5 +175,20 @@ export const migrateStoreToV221 = (input) => {
   });
 
   store.meta = { ...(store.meta || {}), version: '2.2.1', exportVersion: '2.2.1' };
+  return store;
+};
+
+/**
+ * Migration to v3.3.0
+ * - Version bump for app/schema alignment
+ */
+export const migrateStoreToV33 = (input) => {
+  const base = migrateStoreToV221(input);
+  if (!base || typeof base !== 'object') return input;
+  const store = cloneDeep(base);
+
+  if (store.meta?.version === '3.3.0') return store;
+
+  store.meta = { ...(store.meta || {}), version: '3.3.0', exportVersion: '3.3.0' };
   return store;
 };

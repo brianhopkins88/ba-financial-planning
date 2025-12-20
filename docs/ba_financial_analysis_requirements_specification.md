@@ -1,32 +1,31 @@
 # BA Financial Analysis – Requirements Specification
 
-**Version:** 3.2 (beta)  
+**Version:** 3.3.0  
 **Date:** December 16, 2025  
-**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX/data integrity + v3.0 beta features + v3.1 refinements + v3.2 navigation/export/horizon updates). Codebase is at **3.2 beta**; validation and test coverage are still required before marking stable.
+**Status:** Unified Architecture (Relational Registry Model + v1.4 Features + v2.0 + v2.1 Enhancements + v2.2.1 robustness + v2.3 UX/data integrity + v3.0 features + v3.1 refinements + v3.2 navigation/export/horizon updates + v3.3.0 comparison/export/reporting updates). Codebase is at **3.3.0**; validation and test coverage are still required before marking stable.
 
 ------
 
 ## 0. Purpose And Planning Objective
-### 0.0 What’s New in v3.2 (beta; needs validation/testing)
-- Model navigation clamps to the scenario start/end horizon with jump-to-start and jump-to-horizon controls.
-- Projection horizon is configurable (default 35 years) and enforced across simulation, dashboard, and asset projections.
-- Save Data/Export always prompts for a directory (when supported), falling back to browser downloads only if needed.
-- Scenario Compare enhancements: charted metrics (net worth default) and collapsible yearly summaries.
+### 0.0 What’s New in v3.3.0 (needs validation/testing)
+- Scenario Compare supports up to four scenarios, column reordering, and CSV/Markdown exports (including chart + milestones).
+- AI/app exports recompute simulation on demand so payoff and timeline events align with the UI.
+- Cash Flow Manager planning context resolves profiles based on the active timeline month.
 
-### 0.0a Previously Added in v3.1 (beta; needs validation/testing)
+### 0.0a Previously Added in v3.1 (needs validation/testing)
 - Export destinations: users can choose and persist a download folder via File System Access; exports fall back to browser downloads if unsupported.
 - Scenario Compare enhancements: charted metrics (net worth default) and collapsible yearly summaries for faster scenario inspection.
 - Model navigation upgrades: month stepping plus year jumps with tooltips and double-click acceleration.
 
-### 0.0b Previously Added in v3.0.2 (beta; needs validation/testing)
+### 0.0b Previously Added in v3.0.2 (needs validation/testing)
 - Cash Flow Manager now resolves the active **expense profile by burn-month**, so monthly burn tables reflect the profile effective for the selected month (not the base profile).
 - Import/Export hardening: application exports include only registry, scenarios, profiles, and assumptions (no DOM/resolved blobs); imports strip DOM/event noise and `resolvedData` to avoid crashes and quota blow-ups; persistence auto-disables on `QuotaExceededError` to prevent crash loops.
 - Revolving loan strategies: aggressive payoff schedules (extraPayments) are honored in simulation, enabling strategy-based payoffs (e.g., HELOC cleared when strategy dictates) and reflected in burn/ledger views.
 
 ### 0.0b Future Features (planned)
-- Additional UX polish and stability hardening pending validation of v3.2 features.
+- Additional UX polish and stability hardening pending validation of v3.3.0 features.
 
-### 0.0c Previously Added in v3.0 (beta; needs validation/testing)
+### 0.0c Previously Added in v3.0 (needs validation/testing)
 - Cash Flow header surfaces `Property Expenses`, `Monthly Income`, `Monthly Expenses`, and `Surplus/Deficit` (replaces Total Burn card for the model month).
 - Property costs consolidated under a single Property Expenses card; profile home/impound rows only apply when a property is active.
 - Engine safeguards: property-linked loan payments stop after the property sell month; de-duplication prevents double-counting property-linked debt service; future-dated loans stay active until their start month (no premature payoff), and property-linked balances are not double-counted in Scenario Compare.
@@ -34,7 +33,7 @@
 - Scenario Compare: up to three distinct scenarios side-by-side with income/expense profile start info, milestone-age net worth by asset/liability, and chronological event bullets (live simulation only; no baked fallback).
 - 401k matching is configurable per person (enable/disable, cap %, match rate) and flows into the engine; spouse defaults to no match, primary defaults to enabled with cap 6% and 50% rate unless overridden.
 - Cash growth rate is configurable via assumptions (`rates.cash`), default 2% (HYSA-like), replacing the hard-coded 1%.
-- Codebase is **3.2 beta**; feature-complete for this round but still needs validation and test coverage before marking stable.
+- Codebase is **3.3.0**; feature-complete for this round but still needs validation and test coverage before marking stable.
 
 ### 0.1 Primary Objective
 
@@ -135,7 +134,7 @@
 
 - **Versioning & Migration**
   - Snapshots include:
-    - `"exportVersion"` (e.g., `"2.1"`).
+    - `"exportVersion"` (e.g., `"3.3.0"`).
     - `"minAppVersion"` for compatibility checks.
   - A **Data Integrity Engine**:
     - Migrates older snapshots (v1.4, v2.0) into v2.1 schema.

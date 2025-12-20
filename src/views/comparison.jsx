@@ -3,10 +3,11 @@ import { useData } from '../context/DataContext';
 import { runFinancialSimulation } from '../utils/financial_engine.js';
 import { ensureScenarioShape } from '../utils/scenario_shape.js';
 import { cloneDeep } from 'lodash';
-import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, X, ChevronDown, ChevronRight, ArrowLeft, ArrowRight, Download, FileText } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const ages = [65, 70, 75, 80, 85, 90];
+const MAX_COLUMNS = 4;
 const metricOptions = [
     { value: 'netWorth', label: 'Net Worth (default)' },
     { value: 'cash', label: 'Cash' },
@@ -140,6 +141,335 @@ const ScenarioSelector = ({ value, options, onChange, disableIds, label }) => {
     );
 };
 
+const csvEscape = (value) => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+};
+
+const buildCompareCsv = (scenarioData, store, scenarioNames) => {
+    const headers = [
+        'columnIndex',
+        'scenarioId',
+        'scenarioName',
+        'age',
+        'snapshotYear',
+        'netWorth',
+        'cash',
+        'joint',
+        'inherited',
+        'retirement',
+        'property',
+        'reverseMortgage',
+        'totalDebt',
+        'eventCount',
+        'events',
+        'incomeProfileName',
+        'incomeProfileStart',
+        'expenseProfileName',
+        'expenseProfileStart'
+    ];
+
+    const rows = [];
+    scenarioData.forEach((entry, idx) => {
+        if (!entry.data) return;
+        const scen = entry.data.scenario;
+        const sim = entry.data.simulation;
+        const summary = getProfileSummary(scen, store);
+        ages.forEach(age => {
+            const snap = pickSnapshotByAge(sim, scen, age);
+            const events = eventsUpToAge(sim, scen, age);
+            rows.push({
+                columnIndex: idx + 1,
+                scenarioId: entry.id,
+                scenarioName: scen?.name || scenarioNames[entry.id] || '',
+                age,
+                snapshotYear: snap?.year || '',
+                netWorth: snap ? Math.round(snap.netWorth || 0) : '',
+                cash: snap ? Math.round(snap.cash || 0) : '',
+                joint: snap ? Math.round(snap.joint || 0) : '',
+                inherited: snap ? Math.round(snap.inherited || 0) : '',
+                retirement: snap ? Math.round(snap.retirement || 0) : '',
+                property: snap ? Math.round(snap.property || 0) : '',
+                reverseMortgage: snap ? Math.round(snap.reverseMortgage || 0) : '',
+                totalDebt: snap ? Math.round(snap.totalDebt || 0) : '',
+                eventCount: events.length,
+                events: events.map(e => `${e.date}: ${e.text}`).join(' | '),
+                incomeProfileName: summary?.income?.name || '',
+                incomeProfileStart: summary?.income?.start || '',
+                expenseProfileName: summary?.expense?.name || '',
+                expenseProfileStart: summary?.expense?.start || ''
+            });
+        });
+    });
+
+    const lines = [headers.join(',')];
+    rows.forEach(row => {
+        lines.push(headers.map(key => csvEscape(row[key])).join(','));
+    });
+    return lines.join('\n');
+};
+
+const cleanText = (value) => {
+    if (!value) return '';
+    return String(value).replace(/\s+/g, ' ').trim();
+};
+
+const formatCurrency = (value) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return 'n/a';
+    const rounded = Math.round(value);
+    const abs = Math.abs(rounded).toLocaleString();
+    return `${rounded < 0 ? '-' : ''}$${abs}`;
+};
+
+const formatMonthYear = (dateStr) => {
+    if (!dateStr) return 'n/a';
+    const parts = dateStr.split('-');
+    if (parts.length < 2) return dateStr;
+    const [year, month] = parts;
+    const monthIndex = parseInt(month, 10) - 1;
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return dateStr;
+    return `${monthNames[monthIndex]} ${year}`;
+};
+
+const formatYearRanges = (years) => {
+    if (!years || years.length === 0) return 'none';
+    const sorted = Array.from(new Set(years)).sort((a, b) => a - b);
+    const ranges = [];
+    let start = sorted[0];
+    let prev = sorted[0];
+    for (let i = 1; i < sorted.length; i += 1) {
+        const yr = sorted[i];
+        if (yr === prev + 1) {
+            prev = yr;
+            continue;
+        }
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = yr;
+        prev = yr;
+    }
+    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+    return ranges.join(', ');
+};
+
+const formatChartValue = (value) => {
+    const abs = Math.abs(value || 0);
+    if (abs >= 1000000000) return `${(value / 1000000000).toFixed(1)}B`;
+    if (abs >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (abs >= 1000) return `${(value / 1000).toFixed(1)}k`;
+    return `${Math.round(value || 0)}`;
+};
+
+const escapeXml = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+const getScenarioDescription = (scenario) => {
+    const raw = scenario?.description || scenario?.textConfig?.narrative || '';
+    return cleanText(raw) || 'No description provided.';
+};
+
+const getHelocPayoffDate = (simulation) => {
+    const events = simulation?.events || [];
+    const helocEvents = events.filter(e => /heloc/i.test(e.text || ''));
+    if (!helocEvents.length) return null;
+    helocEvents.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return helocEvents[0]?.date || null;
+};
+
+const getRetirementDeclineYear = (simulation) => {
+    const timeline = simulation?.timeline || [];
+    const yearEndBalances = {};
+    timeline.forEach(item => {
+        const year = item.year;
+        const month = item.month || 1;
+        const balance = item.balances?.retirement || 0;
+        if (!yearEndBalances[year] || month >= yearEndBalances[year].month) {
+            yearEndBalances[year] = { month, balance };
+        }
+    });
+    const years = Object.keys(yearEndBalances).map(Number).sort((a, b) => a - b);
+    let sawIncrease = false;
+    let prev = null;
+    for (const year of years) {
+        const current = yearEndBalances[year].balance;
+        if (prev !== null) {
+            const delta = current - prev;
+            if (delta > 0) sawIncrease = true;
+            if (delta < 0 && sawIncrease) return year;
+        }
+        prev = current;
+    }
+    return null;
+};
+
+const getReverseMortgageYears = (simulation) => {
+    const timeline = simulation?.timeline || [];
+    const years = [];
+    timeline.forEach(item => {
+        if ((item.balances?.reverseMortgage || 0) > 0) years.push(item.year);
+    });
+    return formatYearRanges(years);
+};
+
+const getForcedSaleYears = (simulation) => {
+    const events = simulation?.events || [];
+    const years = events
+        .filter(e => /forced sale/i.test(e.text || ''))
+        .map(e => parseInt((e.date || '').slice(0, 4), 10))
+        .filter(yr => !Number.isNaN(yr));
+    return formatYearRanges(years);
+};
+
+const buildScenarioMilestones = (simulation, scenario) => {
+    const netCashflow = (simulation?.timeline || []).reduce((sum, item) => {
+        if (item.year >= 2026 && item.year <= 2029) {
+            return sum + (item.netCashFlow || ((item.income || 0) - (item.expenses || 0)));
+        }
+        return sum;
+    }, 0);
+    const helocDate = getHelocPayoffDate(simulation);
+    const age85 = pickSnapshotByAge(simulation, scenario, 85);
+    const retireDeclineYear = getRetirementDeclineYear(simulation);
+    const rmYears = getReverseMortgageYears(simulation);
+    const forcedYears = getForcedSaleYears(simulation);
+    return [
+        `Net cashflow 2026-2029 (income - expenses): ${formatCurrency(netCashflow)}`,
+        `HELOC paid: ${formatMonthYear(helocDate)}`,
+        `At 85: Net worth ${formatCurrency(age85?.netWorth)}; Retirement ${formatCurrency(age85?.retirement)}`,
+        `401K turns down: ${retireDeclineYear || 'n/a'}`,
+        `Reverse mortgage years: ${rmYears}; Forced sale years: ${forcedYears}`
+    ];
+};
+
+const buildChartData = (scenarioData, metric) => {
+    const merged = new Map();
+    scenarioData.forEach(entry => {
+        const timeline = entry.data?.simulation?.timeline || [];
+        timeline.forEach(point => {
+            const monthIndex = (point.month || 1) - 1;
+            const date = new Date(point.year, monthIndex, 1);
+            const key = `${point.year}-${String(point.month || 1).padStart(2, '0')}`;
+            if (!merged.has(key)) {
+                merged.set(key, { dateLabel: date.toLocaleString('default', { month: 'short', year: 'numeric' }), dateValue: date.getTime() });
+            }
+            const value = metric === 'netWorth' ? point.netWorth : point.balances?.[metric];
+            merged.get(key)[entry.id] = Math.round(value || 0);
+        });
+    });
+    return Array.from(merged.values())
+        .sort((a, b) => a.dateValue - b.dateValue)
+        .map(row => {
+            const { dateValue, ...rest } = row;
+            return rest;
+        });
+};
+
+const buildNetWorthChartSvg = (chartData, scenarioData, scenarioNames, colors) => {
+    if (!chartData.length) return '';
+    const width = 900;
+    const height = 320;
+    const padding = { left: 60, right: 160, top: 20, bottom: 40 };
+    const seriesIds = scenarioData.map(entry => entry.id);
+    const values = [];
+    chartData.forEach(row => {
+        seriesIds.forEach(id => {
+            const v = row[id];
+            if (typeof v === 'number' && !Number.isNaN(v)) values.push(v);
+        });
+    });
+    if (!values.length) return '';
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (min === max) { min -= 1; max += 1; }
+    const xCount = chartData.length;
+    const xScale = (idx) => {
+        if (xCount <= 1) return padding.left;
+        return padding.left + (idx / (xCount - 1)) * (width - padding.left - padding.right);
+    };
+    const yScale = (val) => padding.top + (1 - (val - min) / (max - min)) * (height - padding.top - padding.bottom);
+
+    const gridLines = 4;
+    const gridStep = (max - min) / gridLines;
+    const grid = [];
+    for (let i = 0; i <= gridLines; i += 1) {
+        const value = min + (gridStep * i);
+        const y = yScale(value);
+        grid.push(`<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#e2e8f0" stroke-width="1" />`);
+        grid.push(`<text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" font-size="10" fill="#475569">${escapeXml(formatChartValue(value))}</text>`);
+    }
+
+    const lines = [];
+    seriesIds.forEach((id, idx) => {
+        const segments = [];
+        let current = [];
+        chartData.forEach((row, rowIdx) => {
+            const value = row[id];
+            if (value === undefined || value === null || Number.isNaN(value)) {
+                if (current.length) {
+                    segments.push(current);
+                    current = [];
+                }
+                return;
+            }
+            const x = xScale(rowIdx);
+            const y = yScale(value);
+            current.push(`${x},${y}`);
+        });
+        if (current.length) segments.push(current);
+        segments.forEach(points => {
+            lines.push(`<polyline fill="none" stroke="${colors[idx % colors.length]}" stroke-width="2" points="${points.join(' ')}" />`);
+        });
+    });
+
+    const firstLabel = chartData[0]?.dateLabel || '';
+    const midLabel = chartData[Math.floor(chartData.length / 2)]?.dateLabel || '';
+    const lastLabel = chartData[chartData.length - 1]?.dateLabel || '';
+    const xAxisLabels = [
+        `<text x="${padding.left}" y="${height - 10}" font-size="10" fill="#475569">${escapeXml(firstLabel)}</text>`,
+        `<text x="${xScale(Math.floor(chartData.length / 2))}" y="${height - 10}" font-size="10" fill="#475569" text-anchor="middle">${escapeXml(midLabel)}</text>`,
+        `<text x="${width - padding.right}" y="${height - 10}" font-size="10" fill="#475569" text-anchor="end">${escapeXml(lastLabel)}</text>`
+    ];
+
+    const legend = seriesIds.map((id, idx) => {
+        const name = scenarioNames[id] || `Scenario ${idx + 1}`;
+        const y = padding.top + (idx * 16);
+        const x = width - padding.right + 10;
+        return [
+            `<rect x="${x}" y="${y - 9}" width="10" height="10" fill="${colors[idx % colors.length]}" />`,
+            `<text x="${x + 14}" y="${y}" font-size="10" fill="#475569">${escapeXml(name)}</text>`
+        ].join('');
+    }).join('');
+
+    return [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+        `<rect x="0" y="0" width="${width}" height="${height}" fill="white" />`,
+        `<line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#94a3b8" stroke-width="1" />`,
+        `<line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" stroke="#94a3b8" stroke-width="1" />`,
+        grid.join(''),
+        lines.join(''),
+        xAxisLabels.join(''),
+        legend,
+        `</svg>`
+    ].join('');
+};
+
+const svgToDataUri = (svg) => {
+    if (!svg) return '';
+    const encoded = encodeURIComponent(svg).replace(/%0A/g, '');
+    return `data:image/svg+xml;utf8,${encoded}`;
+};
+
 const ValueBlock = ({ label, value, tone = 'plain' }) => {
     const toneClass = tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-red-600' : 'text-slate-700';
     return (
@@ -198,7 +528,7 @@ export default function ScenarioCompare() {
     const collapseAllYears = useCallback(() => setExpandedAges(new Set()), []);
 
     const addColumn = () => {
-        if (selected.length >= 3) return;
+        if (selected.length >= MAX_COLUMNS) return;
         const unused = scenarioOptions.find(s => !selected.includes(s.id));
         if (unused) setSelected([...selected, unused.id]);
     };
@@ -207,6 +537,14 @@ export default function ScenarioCompare() {
         if (idx === 0) return; // always keep the first column
         setSelected(selected.filter((_, i) => i !== idx));
     };
+
+    const moveColumn = useCallback((idx, dir) => {
+        const next = [...selected];
+        const target = idx + dir;
+        if (target < 0 || target >= next.length) return;
+        [next[idx], next[target]] = [next[target], next[idx]];
+        setSelected(next);
+    }, [selected]);
 
     const scenarioData = useMemo(() => {
         const profileCatalog = store.registry?.profiles || store.profiles || {};
@@ -228,33 +566,118 @@ export default function ScenarioCompare() {
         });
     }, [selected, store, activeScenario]);
 
-    const chartData = useMemo(() => {
-        const merged = new Map();
-        scenarioData.forEach(entry => {
-            const timeline = entry.data?.simulation?.timeline || [];
-            timeline.forEach(point => {
-                const monthIndex = (point.month || 1) - 1;
-                const date = new Date(point.year, monthIndex, 1);
-                const key = `${point.year}-${String(point.month || 1).padStart(2, '0')}`;
-                if (!merged.has(key)) {
-                    merged.set(key, { dateLabel: date.toLocaleString('default', { month: 'short', year: 'numeric' }), dateValue: date.getTime() });
-                }
-                const value = chartMetric === 'netWorth' ? point.netWorth : point.balances?.[chartMetric];
-                merged.get(key)[entry.id] = Math.round(value || 0);
-            });
-        });
-        return Array.from(merged.values())
-            .sort((a, b) => a.dateValue - b.dateValue)
-            .map(row => {
-                const { dateValue, ...rest } = row;
-                return rest;
-            });
-    }, [scenarioData, chartMetric]);
+    const handleExportCsv = useCallback(() => {
+        const csv = buildCompareCsv(scenarioData, store, scenarioNames);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `scenario_compare_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [scenarioData, store, scenarioNames]);
+
+    const chartData = useMemo(() => buildChartData(scenarioData, chartMetric), [scenarioData, chartMetric]);
 
     const chartMetricLabel = metricOptions.find(opt => opt.value === chartMetric)?.label || 'Net Worth';
     const allExpanded = expandedAges.size === ages.length;
     const anyExpanded = expandedAges.size > 0;
-    const chartColors = ['#2563eb', '#16a34a', '#f59e0b'];
+    const chartColors = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444'];
+    const ageColWidth = 90;
+    const scenarioColWidth = useMemo(() => {
+        const cols = Math.max(1, selected.length * 2);
+        return `calc((100% - ${ageColWidth}px) / ${cols})`;
+    }, [selected.length, ageColWidth]);
+
+    const handleExportMarkdown = useCallback(() => {
+        const netWorthData = buildChartData(scenarioData, 'netWorth');
+        const svg = buildNetWorthChartSvg(netWorthData, scenarioData, scenarioNames, chartColors);
+        const chartUri = svgToDataUri(svg);
+        const lines = [];
+        lines.push('# Scenario Comparison Report');
+        lines.push('');
+        lines.push(`Generated: ${new Date().toISOString()}`);
+        lines.push('');
+        if (chartUri) {
+            lines.push('## Net Worth Chart');
+            lines.push('');
+            lines.push(`![Net Worth Chart](${chartUri})`);
+            lines.push('');
+        }
+        lines.push('## Scenario Summaries');
+        lines.push('');
+        scenarioData.forEach((entry, idx) => {
+            const scen = entry.data?.scenario;
+            const sim = entry.data?.simulation;
+            const name = scen?.name || scenarioNames[entry.id] || `Scenario ${idx + 1}`;
+            lines.push(`### ${name}`);
+            lines.push('');
+            lines.push(`**Description:** ${getScenarioDescription(scen)}`);
+            lines.push('');
+            const milestones = sim && scen ? buildScenarioMilestones(sim, scen) : [];
+            if (milestones.length) {
+                lines.push('**Major milestones:**');
+                milestones.forEach(item => lines.push(`- ${item}`));
+                lines.push('');
+            } else {
+                lines.push('**Major milestones:** n/a');
+                lines.push('');
+            }
+        });
+        lines.push('## Age Details');
+        lines.push('');
+        ages.forEach(age => {
+            lines.push(`### Age ${age}`);
+            lines.push('');
+            scenarioData.forEach((entry, idx) => {
+                const scen = entry.data?.scenario;
+                const sim = entry.data?.simulation;
+                const name = scen?.name || scenarioNames[entry.id] || `Scenario ${idx + 1}`;
+                lines.push(`#### ${name}`);
+                if (!scen || !sim) {
+                    lines.push('No data available.');
+                    lines.push('');
+                    return;
+                }
+                const snap = pickSnapshotByAge(sim, scen, age);
+                if (!snap) {
+                    lines.push('No snapshot data available.');
+                    lines.push('');
+                    return;
+                }
+                lines.push('- Assets & Debt:');
+                lines.push(`  - Net Worth: ${formatCurrency(snap.netWorth)}`);
+                lines.push(`  - Cash: ${formatCurrency(snap.cash)}`);
+                lines.push(`  - Joint: ${formatCurrency(snap.joint)}`);
+                lines.push(`  - Inherited: ${formatCurrency(snap.inherited)}`);
+                lines.push(`  - Retirement: ${formatCurrency(snap.retirement)}`);
+                lines.push(`  - Property: ${formatCurrency(snap.property)}`);
+                lines.push(`  - Reverse Mortgage: ${formatCurrency(snap.reverseMortgage)}`);
+                lines.push(`  - Other Debt: ${formatCurrency(snap.totalDebt)}`);
+                const events = eventsUpToAge(sim, scen, age);
+                lines.push(`- Events (${events.length}):`);
+                if (events.length) {
+                    events.forEach(ev => lines.push(`  - ${ev.date} ${ev.text}`));
+                } else {
+                    lines.push('  - None');
+                }
+                lines.push('');
+            });
+        });
+
+        const markdown = lines.join('\n');
+        const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `scenario_compare_report_${new Date().toISOString().slice(0, 10)}.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [scenarioData, scenarioNames, chartColors]);
 
     const renderAssetsCell = (simulation, scen, age) => {
         const snap = pickSnapshotByAge(simulation, scen, age);
@@ -294,7 +717,7 @@ export default function ScenarioCompare() {
             <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Scenario Comparison</h1>
-                    <p className="text-sm text-slate-500">Select up to three scenarios and compare profiles, net worth milestones, and major events side-by-side.</p>
+                    <p className="text-sm text-slate-500">Select up to four scenarios and compare profiles, net worth milestones, and major events side-by-side.</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                     <div className="flex items-center gap-2">
@@ -313,7 +736,19 @@ export default function ScenarioCompare() {
                             Collapse All
                         </button>
                     </div>
-                    {selected.length < 3 && (
+                    <button
+                        onClick={handleExportCsv}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded border border-slate-200 hover:bg-slate-200"
+                    >
+                        <Download size={14}/> Export CSV
+                    </button>
+                    <button
+                        onClick={handleExportMarkdown}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded border border-slate-200 hover:bg-slate-200"
+                    >
+                        <FileText size={14}/> Export Markdown
+                    </button>
+                    {selected.length < MAX_COLUMNS && (
                         <button onClick={addColumn} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white text-sm rounded shadow hover:bg-blue-700">
                             <Plus size={14}/> Add Scenario
                         </button>
@@ -373,10 +808,19 @@ export default function ScenarioCompare() {
             </div>
 
             <div className="overflow-auto border border-slate-200 rounded-xl bg-white shadow-sm">
-                <table className="min-w-full text-sm table-auto">
+                <table className="w-full min-w-full text-sm table-fixed">
+                    <colgroup>
+                        <col style={{ width: `${ageColWidth}px` }} />
+                        {scenarioData.map(entry => (
+                            <React.Fragment key={`colgroup-${entry.id}`}>
+                                <col style={{ width: scenarioColWidth }} />
+                                <col style={{ width: scenarioColWidth }} />
+                            </React.Fragment>
+                        ))}
+                    </colgroup>
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th rowSpan={3} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase w-16">Age</th>
+                            <th rowSpan={4} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase w-16">Age</th>
                             {scenarioData.map((entry, idx) => (
                                 <th key={`${entry.id}-selector`} colSpan={2} className="px-3 py-3 min-w-[280px]">
                                     <div className="flex items-center gap-2">
@@ -389,32 +833,75 @@ export default function ScenarioCompare() {
                                                 onChange={(id) => handleSelect(idx, id)}
                                             />
                                         </div>
-                                        {idx > 0 && (
-                                            <button
-                                                onClick={() => removeColumn(idx)}
-                                                className="text-slate-400 hover:text-red-600 p-1 rounded"
-                                                title="Remove scenario"
-                                            >
-                                                <X size={14}/>
-                                            </button>
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                            {idx > 0 && (
+                                                <button
+                                                    onClick={() => moveColumn(idx, -1)}
+                                                    className="text-slate-400 hover:text-slate-700 p-1 rounded"
+                                                    title="Move column left"
+                                                >
+                                                    <ArrowLeft size={14}/>
+                                                </button>
+                                            )}
+                                            {idx < selected.length - 1 && (
+                                                <button
+                                                    onClick={() => moveColumn(idx, 1)}
+                                                    className="text-slate-400 hover:text-slate-700 p-1 rounded"
+                                                    title="Move column right"
+                                                >
+                                                    <ArrowRight size={14}/>
+                                                </button>
+                                            )}
+                                            {idx > 0 && (
+                                                <button
+                                                    onClick={() => removeColumn(idx)}
+                                                    className="text-slate-400 hover:text-red-600 p-1 rounded"
+                                                    title="Remove scenario"
+                                                >
+                                                    <X size={14}/>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </th>
                             ))}
                         </tr>
                         <tr className="bg-slate-50 border-b border-slate-200">
+                        {scenarioData.map((entry) => {
+                            const description = entry.data ? getScenarioDescription(entry.data.scenario) : null;
+                            return (
+                                <th key={`${entry.id}-profiles`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
+                                    {description ? (
+                                        <div className="text-xs text-slate-700 space-y-1">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400">Description</div>
+                                            <div className="leading-relaxed">{description}</div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-slate-400">No description</div>
+                                    )}
+                                </th>
+                            );
+                        })}
+                    </tr>
+                        <tr className="bg-white border-b border-slate-200">
                             {scenarioData.map((entry) => {
-                                const summary = entry.data ? getProfileSummary(entry.data.scenario, store) : null;
+                                if (!entry.data) {
+                                    return (
+                                        <th key={`${entry.id}-highlights`} colSpan={2} className="px-3 py-2 text-left min-w-[280px] text-xs text-slate-400">
+                                            No highlights available
+                                        </th>
+                                    );
+                                }
+                                const sim = entry.data.simulation;
+                                const scen = entry.data.scenario;
+                                const milestones = buildScenarioMilestones(sim, scen);
                                 return (
-                                    <th key={`${entry.id}-profiles`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
-                                        {summary ? (
-                                            <div className="text-xs text-slate-600 space-y-1">
-                                                <div><span className="font-bold text-slate-700">Income:</span> {summary.income.name} <span className="text-slate-400">({summary.income.start || 'n/a'})</span></div>
-                                                <div><span className="font-bold text-slate-700">Expenses:</span> {summary.expense.name} <span className="text-slate-400">({summary.expense.start || 'n/a'})</span></div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-xs text-slate-400">No data</div>
-                                        )}
+                                    <th key={`${entry.id}-highlights`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
+                                        <ul className="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                                            {milestones.map(item => (
+                                                <li key={`${entry.id}-${item}`}>{item}</li>
+                                            ))}
+                                        </ul>
                                     </th>
                                 );
                             })}

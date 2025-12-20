@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import initialData from '../data/application_data.json';
 import { cloneDeep, set, get } from 'lodash';
 import { format, parseISO, isValid, addMonths, isAfter, isBefore } from 'date-fns';
-import { migrateStoreToV221 } from '../utils/migrate_to_v2';
+import { migrateStoreToV33 } from '../utils/migrate_to_v2';
 import { scenarioSkeleton, ensureScenarioShape } from '../utils/scenario_shape';
 
 // Provide a safe default context so consumers don't blow up if the provider fails to mount
@@ -49,11 +49,12 @@ const defaultContextValue = {
 
 const DataContext = createContext(defaultContextValue);
 
-// Storage key versioned for the v2.2.1 schema
-const STORAGE_KEY = 'ba_financial_planner_v2.2.1_registry';
-const PREVIOUS_STORAGE_KEY = 'ba_financial_planner_v2.1_registry';
-const LEGACY_STORAGE_KEY = 'ba_financial_planner_v2.0_registry';
-const OLDEST_STORAGE_KEY = 'ba_financial_planner_v1.4_primary_spouse';
+// Storage key versioned for the v3.3.0 schema
+const STORAGE_KEY = 'ba_financial_planner_v3.3.0_registry';
+const PREVIOUS_STORAGE_KEY = 'ba_financial_planner_v2.2.1_registry';
+const LEGACY_STORAGE_KEY = 'ba_financial_planner_v2.1_registry';
+const OLDEST_STORAGE_KEY = 'ba_financial_planner_v2.0_registry';
+const OLDEST_LEGACY_KEY = 'ba_financial_planner_v1.4_primary_spouse';
 
 const filterValidProfiles = (seq = [], catalog = {}) => {
   return (seq || []).filter(item => item?.profileId && catalog[item.profileId]);
@@ -124,12 +125,13 @@ export const DataProvider = ({ children }) => {
   const [store, setStore] = useState(() => {
     let data = cloneDeep(initialData);
     try {
-      // Prefer v2.2.1 storage; fall back to older schemas
-      const localV221 = localStorage.getItem(STORAGE_KEY);
-      const localV21 = localStorage.getItem(PREVIOUS_STORAGE_KEY);
-      const localV20 = localStorage.getItem(LEGACY_STORAGE_KEY);
-      const localLegacy = localStorage.getItem(OLDEST_STORAGE_KEY);
-      const raw = localV221 || localV21 || localV20 || localLegacy;
+      // Prefer v3.3.0 storage; fall back to older schemas
+      const localV33 = localStorage.getItem(STORAGE_KEY);
+      const localV221 = localStorage.getItem(PREVIOUS_STORAGE_KEY);
+      const localV21 = localStorage.getItem(LEGACY_STORAGE_KEY);
+      const localV20 = localStorage.getItem(OLDEST_STORAGE_KEY);
+      const localV14 = localStorage.getItem(OLDEST_LEGACY_KEY);
+      const raw = localV33 || localV221 || localV21 || localV20 || localV14;
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.scenarios) data = parsed;
@@ -138,11 +140,11 @@ export const DataProvider = ({ children }) => {
       console.error("Local storage error, reverting to default JSON", e);
     }
 
-    // Ensure we are on the v2.2.1 shape with registry scaffolding
+    // Ensure we are on the v3.3.0 shape with registry scaffolding
     try {
-        data = migrateStoreToV221(data);
+        data = migrateStoreToV33(data);
     } catch (e) {
-        console.warn("Migration to v2.2.1 failed, continuing with base data", e);
+        console.warn("Migration to v3.3.0 failed, continuing with base data", e);
     }
 
     // Repair skeletons on load
@@ -201,7 +203,7 @@ export const DataProvider = ({ children }) => {
 
   useEffect(() => {
       setIsLoaded(true);
-      console.log("BA Financial Data Ready (v2.2.1 schema)");
+      console.log("BA Financial Data Ready (v3.3.0 schema)");
   }, []);
 
   // --- 3. ACCESSORS ---

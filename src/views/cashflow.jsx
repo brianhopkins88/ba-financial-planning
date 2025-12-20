@@ -50,6 +50,26 @@ const MonthSelect = ({ label, value, onChange }) => (
     </div>
 );
 
+const normalizeDateString = (value) => {
+  if (!value) return null;
+  const cleaned = String(value).split('T')[0];
+  const parts = cleaned.split('-');
+  if (parts.length === 1) return cleaned;
+  const year = parts[0];
+  const month = (parts[1] || '01').padStart(2, '0');
+  const day = (parts[2] || '01').padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateSafe = (value) => {
+  const normalized = normalizeDateString(value);
+  if (!normalized) return null;
+  const parsed = parseISO(normalized);
+  return isValid(parsed) ? parsed : null;
+};
+
+const isProfileActive = (item) => item?.isActive !== false;
+
 const BillRow = ({ item, onChange, onDelete }) => (
   <div className="flex items-center gap-2 group mb-2 pl-2 border-l-2 border-transparent hover:border-blue-400 transition-colors">
     <input
@@ -1168,10 +1188,22 @@ export default function CashFlow() {
   const savedProfileSelections = activeScenario.data.ui?.cashflow?.selectedProfiles || {};
   const getStartProfileForScenario = useCallback((type) => {
       const seq = activeScenario.links?.profiles?.[type] || activeScenario.data?.[type]?.profileSequence || [];
-      const activeSeq = seq.filter(item => item.isActive && item.startDate);
+      const activeSeq = seq.filter(item => isProfileActive(item) && (item.startDate || globalStartDateStr));
       if (activeSeq.length === 0) return null;
-      const sorted = [...activeSeq].sort((a, b) => a.startDate.localeCompare(b.startDate));
-      const firstOnOrBefore = sorted.find(item => item.startDate <= globalStartDateStr) || sorted[0];
+      const targetDate = parseDateSafe(globalStartDateStr);
+      const sorted = [...activeSeq].map((item, idx) => ({
+          ...item,
+          parsed: parseDateSafe(item.startDate || globalStartDateStr),
+          idx
+      })).sort((a, b) => {
+          if (!a.parsed || !b.parsed) return (a.startDate || '').localeCompare(b.startDate || '');
+          if (a.parsed.getTime() !== b.parsed.getTime()) return a.parsed - b.parsed;
+          return a.idx - b.idx;
+      });
+      const firstOnOrBefore = sorted.find(item => {
+          const itemDate = item.parsed;
+          return itemDate && targetDate && !isAfter(itemDate, targetDate);
+      }) || sorted[0];
       const profile = store.profiles[firstOnOrBefore.profileId];
       return {
           ...firstOnOrBefore,
@@ -1180,8 +1212,18 @@ export default function CashFlow() {
   }, [activeScenario.links?.profiles, activeScenario.data, globalStartDateStr, store.profiles]);
   const startExpenseProfile = getStartProfileForScenario('expenses');
   const startIncomeProfile = getStartProfileForScenario('income');
-  const hasStartExpenseProfile = !!(startExpenseProfile && startExpenseProfile.startDate && startExpenseProfile.startDate <= globalStartDateStr);
-  const hasStartIncomeProfile = !!(startIncomeProfile && startIncomeProfile.startDate && startIncomeProfile.startDate <= globalStartDateStr);
+  const hasStartExpenseProfile = !!(() => {
+      if (!startExpenseProfile?.startDate) return false;
+      const start = parseDateSafe(startExpenseProfile.startDate || globalStartDateStr);
+      const globalStart = parseDateSafe(globalStartDateStr);
+      return start && globalStart && !isAfter(start, globalStart);
+  })();
+  const hasStartIncomeProfile = !!(() => {
+      if (!startIncomeProfile?.startDate) return false;
+      const start = parseDateSafe(startIncomeProfile.startDate || globalStartDateStr);
+      const globalStart = parseDateSafe(globalStartDateStr);
+      return start && globalStart && !isAfter(start, globalStart);
+  })();
 
   useEffect(() => {
       if (viewTab === 'income' && activeTab !== 'income') {
@@ -1202,29 +1244,36 @@ export default function CashFlow() {
       const tabData = activeScenario.data[activeTab] || {};
       const seq = tabData.profileSequence || [];
       const activeItems = seq
-        .map(item => {
-            const parsed = item.startDate ? parseISO(item.startDate) : null;
-            return { ...item, parsed };
-        })
-        .filter(item => item.isActive && item.parsed && isValid(item.parsed) && !isAfter(item.parsed, simulationDate));
+        .map((item, idx) => ({ ...item, parsed: parseDateSafe(item.startDate || globalStartDateStr), idx }))
+        .filter(item => isProfileActive(item) && item.parsed && simulationDate && !isAfter(item.parsed, simulationDate));
       if (activeItems.length === 0) return null;
-      activeItems.sort((a, b) => b.startDate.localeCompare(a.startDate));
+      activeItems.sort((a, b) => {
+          if (a.parsed.getTime() !== b.parsed.getTime()) return b.parsed - a.parsed;
+          return b.idx - a.idx;
+      });
       const effectiveItem = activeItems[0];
       return store.profiles[effectiveItem.profileId] ? { ...store.profiles[effectiveItem.profileId], ...effectiveItem } : null;
-  }, [activeScenario, activeTab, simulationDate, store.profiles]);
+  }, [activeScenario, activeTab, simulationDate, store.profiles, globalStartDateStr]);
 
   // Profile resolution helpers need to be defined before effects that reference them
   const getProfileSequenceForType = useCallback((type) => {
-      return activeScenario.links?.profiles?.[type] || activeScenario.data?.[type]?.profileSequence || [];
+      const linked = activeScenario.links?.profiles?.[type] || [];
+      if (linked.length > 0) return linked;
+      return activeScenario.data?.[type]?.profileSequence || [];
   }, [activeScenario]);
 
   const getActiveProfileEntryForDate = useCallback((type, dateStr) => {
       const seq = getProfileSequenceForType(type);
+      const targetDate = parseDateSafe(dateStr);
       const activeItems = seq
-        .filter(item => item.isActive && item.startDate && item.startDate <= dateStr)
-        .sort((a, b) => b.startDate.localeCompare(a.startDate));
+        .map((item, idx) => ({ ...item, parsed: parseDateSafe(item.startDate || globalStartDateStr), idx }))
+        .filter(item => isProfileActive(item) && item.parsed && targetDate && !isAfter(item.parsed, targetDate))
+        .sort((a, b) => {
+            if (a.parsed.getTime() !== b.parsed.getTime()) return b.parsed - a.parsed;
+            return b.idx - a.idx;
+        });
       return activeItems[0] || null;
-  }, [getProfileSequenceForType]);
+  }, [getProfileSequenceForType, globalStartDateStr]);
 
   const resolveProfileForDate = useCallback((type, dateStr, returnId = false) => {
       const match = getActiveProfileEntryForDate(type, dateStr);
@@ -1237,17 +1286,22 @@ export default function CashFlow() {
       const timelineMatch = getActiveProfileEntryForDate(type, dateStr);
       const timelineId = timelineMatch?.profileId || '';
       const savedId = savedProfileSelections[type];
+      const targetDate = parseDateSafe(dateStr);
 
       // If saved selection is the same "era" (same or later start date), keep it; otherwise follow the latest active profile.
       if (savedId && timelineMatch) {
           const savedEntry = getProfileSequenceForType(type).find(item =>
-              item.profileId === savedId && item.isActive && item.startDate && item.startDate <= dateStr
+              item.profileId === savedId && isProfileActive(item) && (item.startDate || globalStartDateStr)
           );
-          if (savedEntry && savedEntry.startDate >= timelineMatch.startDate) return savedId;
+          const savedDate = savedEntry ? parseDateSafe(savedEntry.startDate || globalStartDateStr) : null;
+          const timelineDate = parseDateSafe(timelineMatch.startDate || globalStartDateStr);
+          if (savedDate && timelineDate && targetDate && !isAfter(savedDate, targetDate) && savedDate >= timelineDate) {
+              return savedId;
+          }
       }
 
       return timelineId || savedId || '';
-  }, [getActiveProfileEntryForDate, getProfileSequenceForType, savedProfileSelections]);
+  }, [getActiveProfileEntryForDate, getProfileSequenceForType, savedProfileSelections, globalStartDateStr]);
 
   // Burn / planning month state; define before any effects that reference it
   const [burnDate, setBurnDate] = useState(simulationDate);
@@ -1266,7 +1320,14 @@ export default function CashFlow() {
       const dateStr = `${burnMonthKey}-01`;
       const activeEntry = getActiveProfileEntryForDate('expenses', dateStr);
       if (!activeEntry) return baseExpenseData;
-      const sortedActive = expenseSequence.filter(i => i.isActive && i.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const sortedActive = expenseSequence
+        .filter(i => isProfileActive(i) && (i.startDate || globalStartDateStr))
+        .map((item, idx) => ({ ...item, parsed: parseDateSafe(item.startDate || globalStartDateStr), idx }))
+        .sort((a, b) => {
+            if (!a.parsed || !b.parsed) return (a.startDate || '').localeCompare(b.startDate || '');
+            if (a.parsed.getTime() !== b.parsed.getTime()) return a.parsed - b.parsed;
+            return a.idx - b.idx;
+        });
       const baseEntry = sortedActive[0];
       const isBase = baseEntry && activeEntry && baseEntry.profileId === activeEntry.profileId;
       if (isBase) return baseExpenseData;
@@ -1274,6 +1335,14 @@ export default function CashFlow() {
       if (prof?.data) return hydrateExpenseData({ ...prof.data, profileSequence: expenseSequence });
       return baseExpenseData;
   }, [burnMonthKey, getActiveProfileEntryForDate, expenseSequence, store.profiles, hydrateExpenseData, baseExpenseData]);
+
+  const planningExpenseEntry = useMemo(() => {
+      return getActiveProfileEntryForDate('expenses', `${burnMonthKey}-01`);
+  }, [getActiveProfileEntryForDate, burnMonthKey]);
+
+  const planningIncomeEntry = useMemo(() => {
+      return getActiveProfileEntryForDate('income', `${burnMonthKey}-01`);
+  }, [getActiveProfileEntryForDate, burnMonthKey]);
 
   // Sync editingProfileId to saved selection or timeline active profile when switching tabs or if none is set
   useEffect(() => {
@@ -1660,7 +1729,7 @@ export default function CashFlow() {
           <div>
             <div className="flex items-center gap-3">
                  <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Receipt /> Cash Flow Manager</h2>
-                 <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">v2.3 layout</span>
+                 <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">v3.3.0 layout</span>
             </div>
             <div className="text-sm text-slate-500 mt-1">Use the tabs to move between overview, projections, and editing expense/income profiles.</div>
           </div>
@@ -1744,7 +1813,7 @@ export default function CashFlow() {
                       <span className="text-[10px] uppercase font-bold text-blue-500">Expense Profile</span>
                       <select
                           className="border border-blue-200 rounded px-2 py-1 text-sm font-semibold text-slate-700"
-                          value={getEffectiveProfileSelection('expenses', `${burnMonthKey}-01`) || ''}
+                          value={planningExpenseEntry?.profileId || getEffectiveProfileSelection('expenses', `${burnMonthKey}-01`) || ''}
                           onChange={(e) => switchProfileForType('expenses', e.target.value)}
                       >
                           {expenseProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -1755,7 +1824,7 @@ export default function CashFlow() {
                       <span className="text-[10px] uppercase font-bold text-emerald-500">Income Profile</span>
                       <select
                           className="border border-emerald-200 rounded px-2 py-1 text-sm font-semibold text-slate-700"
-                          value={getEffectiveProfileSelection('income', `${burnMonthKey}-01`) || ''}
+                          value={planningIncomeEntry?.profileId || getEffectiveProfileSelection('income', `${burnMonthKey}-01`) || ''}
                           onChange={(e) => switchProfileForType('income', e.target.value)}
                       >
                           {incomeProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

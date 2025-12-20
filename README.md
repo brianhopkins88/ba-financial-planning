@@ -18,7 +18,7 @@ Client-side financial planning app that simulates household solvency over a conf
 - Help & User Manual (via sidebar three-dot menu) with searchable topics and quick-start guidance.
 
 ## Data & Persistence
-- Local storage persistence with v2.2.1 schema and migrations for older snapshots.
+- Local storage persistence with v3.3.0 schema and migrations for older snapshots.
 - Import/Export strips DOM noise and keeps registry canonical; scenarios rebuilt from registry + overrides.
 
 ## Tips

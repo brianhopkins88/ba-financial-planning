@@ -164,7 +164,7 @@ const AppShell = () => {
   const [currentView, setCurrentView] = useState('assets');
   const { isLoaded } = useData();
 
-  if (!isLoaded) return <div className="flex h-screen items-center justify-center text-slate-400 animate-pulse">Loading Financial Core v0.91...</div>;
+  if (!isLoaded) return <div className="flex h-screen items-center justify-center text-slate-400 animate-pulse">Loading Financial Core v3.3.0...</div>;
 
   const renderView = () => {
     switch(currentView) {

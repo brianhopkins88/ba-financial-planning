@@ -225,15 +225,16 @@ export const generateApplicationExport = (store) => {
         return clean;
     };
     const registryClean = cleanRegistry();
+    const profiles = registryClean.profiles || store.profiles || {};
     const exportData = {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.2.1",
-            exportVersion: "3.2.1-full"
+            appVersion: "3.3.0",
+            exportVersion: "3.3.0-full"
         },
         registry: registryClean,
-        profiles: registryClean.profiles || store.profiles || {},
+        profiles,
         assumptions: registryClean.assumptions || store.assumptions || {},
         scenarios: {}
     };
@@ -241,6 +242,20 @@ export const generateApplicationExport = (store) => {
     Object.values(store.scenarios || {}).forEach(scenario => {
         const cleaned = scrubScenario(scenario);
         const resolvedScenario = resolveScenario(cleaned, { ...store, registry: registryClean });
+        const simulation = runFinancialSimulation(resolvedScenario, profiles, registryClean);
+        const annualTimeline = buildAnnualRollup(simulation.timeline);
+        const monthlyTimeline = buildMonthlyRollup(simulation.timeline);
+        const events = (simulation.events || []).map(evt => ({
+            date: evt.date,
+            year: evt.date ? parseInt(evt.date.substring(0, 4), 10) : resolvedScenario.data?.assumptions?.timing?.startYear,
+            text: evt.text
+        }));
+        resolvedScenario.simulation = {
+            annualTimeline,
+            monthlyTimeline,
+            events,
+            notes: "Simulation computed at export time to stay aligned with the active engine."
+        };
         exportData.scenarios[scenario.id] = resolvedScenario;
     });
 
@@ -257,8 +272,8 @@ export const generateAIAnalysisExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.2.1",
-            exportVersion: "3.2.1-ai",
+            appVersion: "3.3.0",
+            exportVersion: "3.3.0-ai",
             mode: "ai-analysis"
         },
         registry: {

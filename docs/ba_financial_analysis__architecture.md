@@ -1,7 +1,7 @@
-# BA Financial Analysis Application – Architecture Specification (v2.3)
+# BA Financial Analysis Application – Architecture Specification (v3.3.0)
 
 **Date:** December 14, 2025  
-**Version:** 2.3  
+**Version:** 3.3.0  
 **Based on:** Architecture v1.4 :contentReference[oaicite:0]{index=0}  
 
 ---
@@ -340,8 +340,8 @@ erDiagram
 - **Client-Only Storage:**
   - Data persists in browser storage (e.g., `localStorage`).
   - Key pattern (current):  
-    - `ba_financial_planner_v2.2.1_registry` (v2.3 keeps this label for compatibility).
-  - Reset clears all known historical keys (v2.0–v2.3) before seeding defaults; imports hard-overwrite all stored data after validation/migration.
+    - `ba_financial_planner_v3.3.0_registry` (v3.3.0 keeps this label for compatibility).
+  - Reset clears all known historical keys (v2.0–v3.3.0) before seeding defaults; imports hard-overwrite all stored data after validation/migration.
 
 - **Import / Migration Logic:**
   - A **Data Integrity Engine** (introduced v1.4) continues to:
@@ -389,7 +389,7 @@ erDiagram
      - Solvency year or “no insolvency” marker.
    - Uses Recharts for graphs.
 
-3. **Cash Flow Manager (v2.3)**
+3. **Cash Flow Manager (v3.3.0)**
    - Tabbed layout:
      - **Overview**: Monthly Burn summary (home split: mortgage+impounds vs HOA/maintenance), context chips, and drill-to-edit accordions for bills, living, liabilities, discretionary/one-offs.
      - **Projections**: Net Cash Flow chart + annual analysis table (home columns split).
