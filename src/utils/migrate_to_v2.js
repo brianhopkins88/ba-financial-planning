@@ -179,7 +179,7 @@ export const migrateStoreToV221 = (input) => {
 };
 
 /**
- * Migration to v3.3.0
+ * Migration to v3.4.0
  * - Version bump for app/schema alignment
  */
 export const migrateStoreToV33 = (input) => {
@@ -187,8 +187,8 @@ export const migrateStoreToV33 = (input) => {
   if (!base || typeof base !== 'object') return input;
   const store = cloneDeep(base);
 
-  if (store.meta?.version === '3.3.0') return store;
+  if (store.meta?.version === '3.4.0') return store;
 
-  store.meta = { ...(store.meta || {}), version: '3.3.0', exportVersion: '3.3.0' };
+  store.meta = { ...(store.meta || {}), version: '3.4.0', exportVersion: '3.4.0' };
   return store;
 };

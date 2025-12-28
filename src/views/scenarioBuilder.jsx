@@ -23,12 +23,12 @@ export default function ScenarioBuilder() {
   const startDateStr = `${timing.startYear}-${String(timing.startMonth).padStart(2, '0')}-01`;
 
   const incomeProfiles = useMemo(() => Object.values(registry.profiles || {}).filter(p => p.type === 'income'), [registry]);
-  const expenseProfiles = useMemo(() => Object.values(registry.profiles || {}).filter(p => p.type === 'expenses'), [registry]);
+  const expenseProfiles = useMemo(() => Object.values(registry.profiles || {}).filter(p => p.type === 'expenses' || p.type === 'expense'), [registry]);
 
   const linkedAssets = activeScenario.links?.assets || [];
   const linkedLiabilities = activeScenario.links?.liabilities || [];
-  const seqIncome = activeScenario.links?.profiles?.income || [];
-  const seqExpenses = activeScenario.links?.profiles?.expenses || [];
+  const seqIncome = (activeScenario.links?.profiles?.income?.length ? activeScenario.links.profiles.income : activeScenario.data?.income?.profileSequence) || [];
+  const seqExpenses = (activeScenario.links?.profiles?.expenses?.length ? activeScenario.links.profiles.expenses : activeScenario.data?.expenses?.profileSequence) || [];
 
   const profileRow = (p, type) => {
     const seq = type === 'income' ? seqIncome : seqExpenses;

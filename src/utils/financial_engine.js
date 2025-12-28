@@ -572,6 +572,9 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                 const propertyStartDate = prop.inputs?.startDate ? parseISO(prop.inputs.startDate) : startDate;
                 const propertyElapsedYears = Math.max(0, differenceInMonths(currentDate, propertyStartDate) / 12);
                 const propInflationMult = Math.pow(1 + inflationRate, propertyElapsedYears);
+                const otherBaseDate = isAfter(propertyStartDate, startDate) ? propertyStartDate : startDate;
+                const otherElapsedYears = Math.max(0, differenceInMonths(currentDate, otherBaseDate) / 12);
+                const otherInflationMult = Math.pow(1 + inflationRate, otherElapsedYears);
                 const propTaxInflationMult = Math.pow(1 + propTaxRate, propertyElapsedYears);
                 const propInsInflationMult = Math.pow(1 + propInsRate, propertyElapsedYears);
                 const costs = prop.inputs?.carryingCosts || {};
@@ -586,7 +589,7 @@ export const runFinancialSimulation = (scenario, profiles, registry) => {
                     monthlyBreakdown.expenses.homeImpounds += (i.amount || 0) * m;
                 });
                 other.forEach(i => {
-                    monthlyBreakdown.expenses.homeOther += (i.amount || 0) * propInflationMult;
+                    monthlyBreakdown.expenses.homeOther += (i.amount || 0) * otherInflationMult;
                 });
 
                 // Fallback: ensure linked mortgage payments are counted even if not in activeLoans (e.g., scheduling drift)

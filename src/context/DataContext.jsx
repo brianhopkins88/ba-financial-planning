@@ -49,15 +49,33 @@ const defaultContextValue = {
 
 const DataContext = createContext(defaultContextValue);
 
-// Storage key versioned for the v3.3.0 schema
-const STORAGE_KEY = 'ba_financial_planner_v3.3.0_registry';
+// Storage key versioned for the v3.4.0 schema
+const STORAGE_KEY = 'ba_financial_planner_v3.4.0_registry';
 const PREVIOUS_STORAGE_KEY = 'ba_financial_planner_v2.2.1_registry';
 const LEGACY_STORAGE_KEY = 'ba_financial_planner_v2.1_registry';
 const OLDEST_STORAGE_KEY = 'ba_financial_planner_v2.0_registry';
 const OLDEST_LEGACY_KEY = 'ba_financial_planner_v1.4_primary_spouse';
 
+const mergeProfileCatalogs = (registryProfiles = {}, topProfiles = {}) => {
+  return { ...topProfiles, ...registryProfiles };
+};
+
+const normalizeProfiles = (store) => {
+  const merged = mergeProfileCatalogs(store.registry?.profiles || {}, store.profiles || {});
+  Object.values(merged).forEach(p => {
+    if (p?.type === 'expense') p.type = 'expenses';
+  });
+  if (!store.registry) store.registry = { assets: {}, liabilities: {}, profiles: {} };
+  store.registry.profiles = merged;
+  store.profiles = merged;
+  return store;
+};
+
 const filterValidProfiles = (seq = [], catalog = {}) => {
-  return (seq || []).filter(item => item?.profileId && catalog[item.profileId]);
+  if (!seq || seq.length === 0) return [];
+  const hasCatalog = catalog && Object.keys(catalog).length > 0;
+  if (!hasCatalog) return seq.filter(item => item?.profileId);
+  return seq.filter(item => item?.profileId && catalog[item.profileId]);
 };
 
 const rebuildScenarioFromRegistry = (scenario, registry, profileCatalog) => {
@@ -96,10 +114,12 @@ const rebuildScenarioFromRegistry = (scenario, registry, profileCatalog) => {
   scen.data.assets = { accounts: rebuiltAssets };
   scen.data.loans = rebuiltLoans;
 
-  const catalog = profileCatalog || registry?.profiles || {};
+  const catalog = profileCatalog || mergeProfileCatalogs(registry?.profiles || {}, {});
   scen.links.profiles = scen.links.profiles || { income: [], expenses: [] };
-  const cleanIncome = filterValidProfiles(scen.links.profiles.income, catalog);
-  const cleanExpenses = filterValidProfiles(scen.links.profiles.expenses, catalog);
+  const rawIncome = (scen.links.profiles.income?.length ? scen.links.profiles.income : (scen.data?.income?.profileSequence || []));
+  const rawExpenses = (scen.links.profiles.expenses?.length ? scen.links.profiles.expenses : (scen.data?.expenses?.profileSequence || []));
+  const cleanIncome = filterValidProfiles(rawIncome, catalog);
+  const cleanExpenses = filterValidProfiles(rawExpenses, catalog);
   scen.links.profiles.income = cleanIncome;
   scen.links.profiles.expenses = cleanExpenses;
   if (!scen.data.income) scen.data.income = {};
@@ -112,7 +132,7 @@ const rebuildScenarioFromRegistry = (scenario, registry, profileCatalog) => {
 
 const rebuildStoreScenarios = (store) => {
   const next = cloneDeep(store);
-  const profileCatalog = store.registry?.profiles || store.profiles || {};
+  const profileCatalog = mergeProfileCatalogs(store.registry?.profiles || {}, store.profiles || {});
   Object.keys(next.scenarios || {}).forEach(k => {
     next.scenarios[k] = rebuildScenarioFromRegistry(next.scenarios[k], next.registry, profileCatalog);
   });
@@ -125,7 +145,7 @@ export const DataProvider = ({ children }) => {
   const [store, setStore] = useState(() => {
     let data = cloneDeep(initialData);
     try {
-      // Prefer v3.3.0 storage; fall back to older schemas
+    // Prefer v3.4.0 storage; fall back to older schemas
       const localV33 = localStorage.getItem(STORAGE_KEY);
       const localV221 = localStorage.getItem(PREVIOUS_STORAGE_KEY);
       const localV21 = localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -140,11 +160,12 @@ export const DataProvider = ({ children }) => {
       console.error("Local storage error, reverting to default JSON", e);
     }
 
-    // Ensure we are on the v3.3.0 shape with registry scaffolding
+    // Ensure we are on the v3.4.0 shape with registry scaffolding
     try {
         data = migrateStoreToV33(data);
+        data = normalizeProfiles(data);
     } catch (e) {
-        console.warn("Migration to v3.3.0 failed, continuing with base data", e);
+        console.warn("Migration to v3.4.0 failed, continuing with base data", e);
     }
 
     // Repair skeletons on load
@@ -203,7 +224,7 @@ export const DataProvider = ({ children }) => {
 
   useEffect(() => {
       setIsLoaded(true);
-      console.log("BA Financial Data Ready (v3.3.0 schema)");
+      console.log("BA Financial Data Ready (v3.4.0 schema)");
   }, []);
 
   // --- 3. ACCESSORS ---
@@ -217,7 +238,7 @@ export const DataProvider = ({ children }) => {
   const activeScenario = useMemo(() => {
       const scen = ensureScenarioShape(activeScenarioRaw);
       const links = scen.links || { assets: [], liabilities: [], profiles: {} };
-      const profileCatalog = store.registry?.profiles || store.profiles || {};
+      const profileCatalog = mergeProfileCatalogs(store.registry?.profiles || {}, store.profiles || {});
       // Start with any scenario data already present to preserve overrides
       const existingAssets = scen.data?.assets?.accounts || {};
       const assets = { ...existingAssets };
@@ -248,8 +269,10 @@ export const DataProvider = ({ children }) => {
       // Profile sequences stay in scen.links
       if (!scen.data.income) scen.data.income = {};
       if (!scen.data.expenses) scen.data.expenses = {};
-      const cleanIncome = filterValidProfiles(links.profiles?.income || scen.data.income.profileSequence, profileCatalog);
-      const cleanExpenses = filterValidProfiles(links.profiles?.expenses || scen.data.expenses.profileSequence, profileCatalog);
+      const rawIncome = (links.profiles?.income?.length ? links.profiles.income : scen.data.income.profileSequence);
+      const rawExpenses = (links.profiles?.expenses?.length ? links.profiles.expenses : scen.data.expenses.profileSequence);
+      const cleanIncome = filterValidProfiles(rawIncome, profileCatalog);
+      const cleanExpenses = filterValidProfiles(rawExpenses, profileCatalog);
       if (!scen.links.profiles) scen.links.profiles = { income: [], expenses: [] };
       scen.links.profiles.income = cleanIncome;
       scen.links.profiles.expenses = cleanExpenses;
@@ -511,11 +534,21 @@ export const DataProvider = ({ children }) => {
       }
       else if (parts[0] === 'loans') {
           const loanId = parts[1];
-          if (!next.registry.liabilities[loanId]) next.registry.liabilities[loanId] = {};
-          set(next.registry.liabilities[loanId], parts.slice(2).join('.'), value);
+          const fieldPath = parts.slice(2).join('.');
           if (!scenario.links.liabilities.includes(loanId)) scenario.links.liabilities.push(loanId);
           if (!scenario.data.loans[loanId]) scenario.data.loans[loanId] = {};
-          set(scenario.data.loans[loanId], parts.slice(2).join('.'), value);
+
+          if (fieldPath === 'activeStrategyId') {
+              if (!scenario.overrides) scenario.overrides = { assets: {}, liabilities: {} };
+              if (!scenario.overrides.liabilities) scenario.overrides.liabilities = {};
+              if (!scenario.overrides.liabilities[loanId]) scenario.overrides.liabilities[loanId] = {};
+              set(scenario.overrides.liabilities[loanId], fieldPath, value);
+              set(scenario.data.loans[loanId], fieldPath, value);
+          } else {
+              if (!next.registry.liabilities[loanId]) next.registry.liabilities[loanId] = {};
+              set(next.registry.liabilities[loanId], fieldPath, value);
+              set(scenario.data.loans[loanId], fieldPath, value);
+          }
       }
       else {
           set(scenario.data, path, value);
@@ -562,7 +595,7 @@ export const DataProvider = ({ children }) => {
           try { localStorage.removeItem(k); } catch (e) { console.warn("Unable to remove storage key", k, e); }
       });
 
-      const fresh = migrateStoreToV221(cloneDeep(initialData));
+      const fresh = normalizeProfiles(migrateStoreToV33(cloneDeep(initialData)));
       Object.keys(fresh.scenarios || {}).forEach(k => { fresh.scenarios[k] = ensureScenarioShape(fresh.scenarios[k]); });
       fresh.meta.activeScenarioId = fresh.meta.activeScenarioId || Object.keys(fresh.scenarios || {})[0];
 
@@ -575,8 +608,12 @@ export const DataProvider = ({ children }) => {
       if (!scenario.links.assets) scenario.links.assets = [];
       if (!scenario.links.liabilities) scenario.links.liabilities = [];
       if (!scenario.links.profiles) scenario.links.profiles = {};
-      if (!scenario.links.profiles.income) scenario.links.profiles.income = scenario.data?.income?.profileSequence || [];
-      if (!scenario.links.profiles.expenses) scenario.links.profiles.expenses = scenario.data?.expenses?.profileSequence || [];
+      if (!scenario.links.profiles.income || scenario.links.profiles.income.length === 0) {
+          scenario.links.profiles.income = cloneDeep(scenario.data?.income?.profileSequence || []);
+      }
+      if (!scenario.links.profiles.expenses || scenario.links.profiles.expenses.length === 0) {
+          scenario.links.profiles.expenses = cloneDeep(scenario.data?.expenses?.profileSequence || []);
+      }
   };
 
   const addAsset = (type) => {
@@ -785,7 +822,7 @@ export const DataProvider = ({ children }) => {
   // IMPORT: overwrite entire application state with imported file (after validation/migration)
   const importData = (importedJson) => {
       const cleanData = validateAndRepairImport(importedJson);
-      const migrated = migrateStoreToV221(cleanData);
+      const migrated = migrateStoreToV33(cleanData);
 
       setStore(prev => {
           const sourceScenarios = migrated.scenarios || {};
@@ -795,9 +832,7 @@ export const DataProvider = ({ children }) => {
               return prev;
           }
 
-          const next = cloneDeep(migrated);
-          if (!next.registry) next.registry = { assets: {}, liabilities: {}, profiles: cloneDeep(next.profiles || {}) };
-          if (!next.profiles) next.profiles = cloneDeep(next.registry.profiles || {});
+          const next = normalizeProfiles(cloneDeep(migrated));
 
           // Ensure each scenario has defaults/sorted sequences
           Object.keys(next.scenarios || {}).forEach(k => {
@@ -837,6 +872,10 @@ export const DataProvider = ({ children }) => {
           startDate: format(simulationDate, 'yyyy-MM-dd'),
           isActive: true
       });
+      if (!scen.data) scen.data = {};
+      const key = type === 'income' ? 'income' : 'expenses';
+      if (!scen.data[key]) scen.data[key] = {};
+      scen.data[key].profileSequence = cloneDeep(seq);
       return next;
   });
 
@@ -854,6 +893,10 @@ export const DataProvider = ({ children }) => {
       const exist = seq.find(x => x.profileId === pid);
       if(exist){ exist.isActive = act; if(date) exist.startDate = date; }
       else { seq.push({ profileId: pid, startDate: date || '2026-01-01', isActive: act }); }
+      if (!scen.data) scen.data = {};
+      const key = t === 'income' ? 'income' : 'expenses';
+      if (!scen.data[key]) scen.data[key] = {};
+      scen.data[key].profileSequence = cloneDeep(seq);
       return c;
   });
 

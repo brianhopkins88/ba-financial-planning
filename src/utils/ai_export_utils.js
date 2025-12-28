@@ -67,8 +67,10 @@ const resolveScenario = (scen, store) => {
 
     data.income = data.income || {};
     data.expenses = data.expenses || {};
-    data.income.profileSequence = links.profiles?.income || data.income.profileSequence || [];
-    data.expenses.profileSequence = links.profiles?.expenses || data.expenses.profileSequence || [];
+    const incomeSeq = (links.profiles?.income?.length ? links.profiles.income : data.income.profileSequence) || [];
+    const expenseSeq = (links.profiles?.expenses?.length ? links.profiles.expenses : data.expenses.profileSequence) || [];
+    data.income.profileSequence = incomeSeq;
+    data.expenses.profileSequence = expenseSeq;
 
     resolved.data = data;
     return resolved;
@@ -230,8 +232,8 @@ export const generateApplicationExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.3.0",
-            exportVersion: "3.3.0-full"
+            appVersion: "3.4.0",
+            exportVersion: "3.4.0-full"
         },
         registry: registryClean,
         profiles,
@@ -272,8 +274,8 @@ export const generateAIAnalysisExport = (store) => {
         meta: {
             ...store.meta,
             exportDate: new Date().toISOString(),
-            appVersion: "3.3.0",
-            exportVersion: "3.3.0-ai",
+            appVersion: "3.4.0",
+            exportVersion: "3.4.0-ai",
             mode: "ai-analysis"
         },
         registry: {

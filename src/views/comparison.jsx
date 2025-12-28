@@ -19,6 +19,28 @@ const metricOptions = [
     { value: 'totalDebt', label: 'Total Debt' }
 ];
 
+const HIGHLIGHT_LABELS = [
+    { key: 'cashflow', label: 'Surplus/deficit cash flow (income - expenses)', subLabels: ['2026', '2027', '2028', '2029'] },
+    { key: 'helocPaid', label: 'HELOC paid' },
+    { key: 'netWorth2029', label: 'Net worth end of 2029' },
+    { key: 'propertyPaidOff', label: 'Property paid off' },
+    { key: 'retirementStart', label: '401K withdrawals begin' },
+    { key: 'reverseMortgage', label: 'Reverse mortgage' },
+    { key: 'forcedSale', label: 'Forced home sale' },
+    { key: 'horizonNetWorth', label: 'Net worth at horizon end' }
+];
+
+const buildHighlightRows = () => {
+    const rows = [];
+    HIGHLIGHT_LABELS.forEach(item => {
+        rows.push({ key: item.key, label: item.label, type: 'main' });
+        (item.subLabels || []).forEach((subLabel, idx) => {
+            rows.push({ key: item.key, label: subLabel, type: 'sub', subIndex: idx });
+        });
+    });
+    return rows;
+};
+
 const resolveScenario = (scenario, registry) => {
     const resolved = ensureScenarioShape(cloneDeep(scenario));
     const links = resolved.links || { assets: [], liabilities: [], profiles: {} };
@@ -49,8 +71,10 @@ const resolveScenario = (scenario, registry) => {
     // Profiles (income/expense) sequences
     data.income = data.income || {};
     data.expenses = data.expenses || {};
-    data.income.profileSequence = links.profiles?.income || data.income.profileSequence || [];
-    data.expenses.profileSequence = links.profiles?.expenses || data.expenses.profileSequence || [];
+    const incomeSeq = (links.profiles?.income?.length ? links.profiles.income : data.income.profileSequence) || [];
+    const expenseSeq = (links.profiles?.expenses?.length ? links.profiles.expenses : data.expenses.profileSequence) || [];
+    data.income.profileSequence = incomeSeq;
+    data.expenses.profileSequence = expenseSeq;
 
     resolved.data = data;
     return resolved;
@@ -67,7 +91,7 @@ const getProfileSummary = (scenario, store) => {
     };
     const i = findFirst(seqIncome);
     const e = findFirst(seqExpense);
-    const catalog = store.registry?.profiles || store.profiles || {};
+    const catalog = { ...(store.profiles || {}), ...(store.registry?.profiles || {}) };
     const inlineIncomeName = scenario.data?.income?.primary ? 'Scenario Income (inline)' : 'Not set';
     const inlineExpenseName = scenario.data?.expenses ? 'Scenario Expenses (inline)' : 'Not set';
     const iName = i ? (catalog[i.profileId]?.name || inlineIncomeName || i.profileId) : inlineIncomeName;
@@ -236,26 +260,6 @@ const formatMonthYear = (dateStr) => {
     return `${monthNames[monthIndex]} ${year}`;
 };
 
-const formatYearRanges = (years) => {
-    if (!years || years.length === 0) return 'none';
-    const sorted = Array.from(new Set(years)).sort((a, b) => a - b);
-    const ranges = [];
-    let start = sorted[0];
-    let prev = sorted[0];
-    for (let i = 1; i < sorted.length; i += 1) {
-        const yr = sorted[i];
-        if (yr === prev + 1) {
-            prev = yr;
-            continue;
-        }
-        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-        start = yr;
-        prev = yr;
-    }
-    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-    return ranges.join(', ');
-};
-
 const formatChartValue = (value) => {
     const abs = Math.abs(value || 0);
     if (abs >= 1000000000) return `${(value / 1000000000).toFixed(1)}B`;
@@ -281,75 +285,148 @@ const getScenarioDescription = (scenario) => {
 
 const getHelocPayoffDate = (simulation) => {
     const events = simulation?.events || [];
-    const helocEvents = events.filter(e => /heloc/i.test(e.text || ''));
+    const helocEvents = events.filter(e => /heloc/i.test(e.text || '') && /(paid off|completed)/i.test(e.text || ''));
     if (!helocEvents.length) return null;
     helocEvents.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     return helocEvents[0]?.date || null;
 };
 
-const getRetirementDeclineYear = (simulation) => {
-    const timeline = simulation?.timeline || [];
-    const yearEndBalances = {};
-    timeline.forEach(item => {
-        const year = item.year;
-        const month = item.month || 1;
-        const balance = item.balances?.retirement || 0;
-        if (!yearEndBalances[year] || month >= yearEndBalances[year].month) {
-            yearEndBalances[year] = { month, balance };
-        }
-    });
-    const years = Object.keys(yearEndBalances).map(Number).sort((a, b) => a - b);
-    let sawIncrease = false;
-    let prev = null;
-    for (const year of years) {
-        const current = yearEndBalances[year].balance;
-        if (prev !== null) {
-            const delta = current - prev;
-            if (delta > 0) sawIncrease = true;
-            if (delta < 0 && sawIncrease) return year;
-        }
-        prev = current;
-    }
-    return null;
-};
-
-const getReverseMortgageYears = (simulation) => {
-    const timeline = simulation?.timeline || [];
-    const years = [];
-    timeline.forEach(item => {
-        if ((item.balances?.reverseMortgage || 0) > 0) years.push(item.year);
-    });
-    return formatYearRanges(years);
-};
-
-const getForcedSaleYears = (simulation) => {
+const getPropertyMortgagePayoff = (simulation, scenario) => {
     const events = simulation?.events || [];
-    const years = events
-        .filter(e => /forced sale/i.test(e.text || ''))
-        .map(e => parseInt((e.date || '').slice(0, 4), 10))
-        .filter(yr => !Number.isNaN(yr));
-    return formatYearRanges(years);
+    const loans = scenario?.data?.loans || {};
+    const propertyLoanIds = new Set();
+    Object.values(scenario?.data?.assets?.accounts || {}).forEach(asset => {
+        if (asset.type !== 'property') return;
+        (asset.inputs?.linkedLoanIds || []).forEach(id => propertyLoanIds.add(id));
+        if (asset.inputs?.linkedLoanId) propertyLoanIds.add(asset.inputs.linkedLoanId);
+    });
+    const isHelocLoan = (loan) => {
+        const name = (loan?.name || '').toLowerCase();
+        return name.includes('heloc') || loan?.type === 'revolving';
+    };
+    const payoffLoanNames = Array.from(propertyLoanIds)
+        .map(id => loans[id])
+        .filter(loan => loan && !isHelocLoan(loan))
+        .map(loan => loan.name || loan.id)
+        .filter(Boolean);
+    if (!payoffLoanNames.length) return null;
+    const payoffEvents = events
+        .filter(e => /(paid off|completed)/i.test(e.text || ''))
+        .filter(e => payoffLoanNames.some(name => (e.text || '').includes(name)));
+    if (!payoffEvents.length) return null;
+    payoffEvents.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const date = payoffEvents[payoffEvents.length - 1]?.date || null;
+    return date ? { date, age: getAgeAtDate(scenario, date) } : null;
 };
 
-const buildScenarioMilestones = (simulation, scenario) => {
-    const netCashflow = (simulation?.timeline || []).reduce((sum, item) => {
-        if (item.year >= 2026 && item.year <= 2029) {
-            return sum + (item.netCashFlow || ((item.income || 0) - (item.expenses || 0)));
-        }
-        return sum;
-    }, 0);
+const getAgeAtDate = (scenario, dateStr) => {
+    if (!dateStr) return null;
+    const year = parseInt(String(dateStr).slice(0, 4), 10);
+    if (Number.isNaN(year)) return null;
+    const birthYear = scenario?.data?.income?.primary?.birthYear || 1968;
+    return year - birthYear;
+};
+
+const getYearEndSnapshot = (simulation, year) => {
+    const timeline = simulation?.timeline || [];
+    let target = null;
+    timeline.forEach(item => {
+        if (item.year !== year) return;
+        if (!target || (item.month || 0) >= (target.month || 0)) target = item;
+    });
+    return target;
+};
+
+const getHorizonSnapshot = (simulation) => {
+    const timeline = simulation?.timeline || [];
+    return timeline.length ? timeline[timeline.length - 1] : null;
+};
+
+const getYearlyNetCashflow = (simulation, startYear, endYear) => {
+    const totals = {};
+    const counts = {};
+    for (let y = startYear; y <= endYear; y += 1) {
+        totals[y] = 0;
+        counts[y] = 0;
+    }
+    (simulation?.timeline || []).forEach(item => {
+        if (item.year < startYear || item.year > endYear) return;
+        const val = item.netCashFlow ?? ((item.income || 0) - (item.expenses || 0));
+        totals[item.year] += val;
+        counts[item.year] += 1;
+    });
+    return { totals, counts };
+};
+
+const getRetirementWithdrawalStart = (simulation) => {
+    const timeline = simulation?.timeline || [];
+    const entry = timeline.find(item => (item.breakdown?.waterfall?.retirementGrossUsed || 0) > 0);
+    if (!entry) return null;
+    return { date: entry.date, age: entry.age };
+};
+
+const getPropertyLoanPayoff = (simulation, scenario) => {
+    const events = simulation?.events || [];
+    const loans = scenario?.data?.loans || {};
+    const propertyLoanIds = new Set();
+    Object.values(scenario?.data?.assets?.accounts || {}).forEach(asset => {
+        if (asset.type !== 'property') return;
+        (asset.inputs?.linkedLoanIds || []).forEach(id => propertyLoanIds.add(id));
+        if (asset.inputs?.linkedLoanId) propertyLoanIds.add(asset.inputs.linkedLoanId);
+    });
+    Object.values(loans).forEach(loan => {
+        if (!loan?.id) return;
+        if (loan.propertyLinked || loan.linkedPropertyId || loan.type === 'mortgage') propertyLoanIds.add(loan.id);
+    });
+    const loanNames = Array.from(propertyLoanIds).map(id => loans[id]?.name || id).filter(Boolean);
+    if (!loanNames.length) return null;
+    const payoffEvents = events
+        .filter(e => /(paid off|completed)/i.test(e.text || ''))
+        .filter(e => loanNames.some(name => (e.text || '').includes(name)));
+    if (!payoffEvents.length) return null;
+    payoffEvents.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const date = payoffEvents[0]?.date || null;
+    return { date, age: getAgeAtDate(scenario, date) };
+};
+
+const getEventDateByRegex = (simulation, regex) => {
+    const events = simulation?.events || [];
+    const matches = events.filter(e => regex.test(e.text || ''));
+    if (!matches.length) return null;
+    matches.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return matches[0]?.date || null;
+};
+
+const buildScenarioHighlightValues = (simulation, scenario) => {
     const helocDate = getHelocPayoffDate(simulation);
-    const age85 = pickSnapshotByAge(simulation, scenario, 85);
-    const retireDeclineYear = getRetirementDeclineYear(simulation);
-    const rmYears = getReverseMortgageYears(simulation);
-    const forcedYears = getForcedSaleYears(simulation);
-    return [
-        `Net cashflow 2026-2029 (income - expenses): ${formatCurrency(netCashflow)}`,
-        `HELOC paid: ${formatMonthYear(helocDate)}`,
-        `At 85: Net worth ${formatCurrency(age85?.netWorth)}; Retirement ${formatCurrency(age85?.retirement)}`,
-        `401K turns down: ${retireDeclineYear || 'n/a'}`,
-        `Reverse mortgage years: ${rmYears}; Forced sale years: ${forcedYears}`
-    ];
+    const networth2029 = getYearEndSnapshot(simulation, 2029)?.netWorth;
+    const horizonNetWorth = getHorizonSnapshot(simulation)?.netWorth;
+    const propertyPayoff = getPropertyMortgagePayoff(simulation, scenario);
+    const retirementStart = getRetirementWithdrawalStart(simulation);
+    const reverseMortgageDate = getEventDateByRegex(simulation, /reverse mortgage activated/i);
+    const forcedSaleDate = getEventDateByRegex(simulation, /forced sale/i);
+    const cashflowByYear = getYearlyNetCashflow(simulation, 2026, 2029);
+    const cashflowYears = [];
+    let cashflowTotal = 0;
+    let cashflowTotalCount = 0;
+    for (let year = 2026; year <= 2029; year += 1) {
+        const hasData = cashflowByYear.counts[year] > 0;
+        if (hasData) {
+            cashflowTotal += cashflowByYear.totals[year];
+            cashflowTotalCount += 1;
+        }
+        cashflowYears.push(hasData ? formatCurrency(cashflowByYear.totals[year]) : 'n/a');
+    }
+    return {
+        cashflow: { value: cashflowTotalCount > 0 ? formatCurrency(cashflowTotal) : 'n/a', subValues: cashflowYears },
+        helocPaid: { value: formatMonthYear(helocDate) },
+        netWorth2029: { value: formatCurrency(networth2029) },
+        propertyPaidOff: { value: propertyPayoff ? `age ${propertyPayoff.age} (${formatMonthYear(propertyPayoff.date)})` : 'n/a' },
+        retirementStart: { value: retirementStart ? `age ${retirementStart.age} (${formatMonthYear(retirementStart.date)})` : 'n/a' },
+        reverseMortgage: { value: reverseMortgageDate ? `age ${getAgeAtDate(scenario, reverseMortgageDate)} (${String(reverseMortgageDate).slice(0, 4)})` : 'n/a' },
+        forcedSale: { value: forcedSaleDate ? `age ${getAgeAtDate(scenario, forcedSaleDate)} (${String(forcedSaleDate).slice(0, 4)})` : 'n/a' },
+        horizonNetWorth: { value: formatCurrency(horizonNetWorth) }
+    };
 };
 
 const buildChartData = (scenarioData, metric) => {
@@ -547,7 +624,7 @@ export default function ScenarioCompare() {
     }, [selected]);
 
     const scenarioData = useMemo(() => {
-        const profileCatalog = store.registry?.profiles || store.profiles || {};
+        const profileCatalog = { ...(store.profiles || {}), ...(store.registry?.profiles || {}) };
         return selected.map(id => {
             const scen = id === activeScenario?.id ? activeScenario : store.scenarios[id];
             if (!scen) return { id, data: null };
@@ -565,6 +642,16 @@ export default function ScenarioCompare() {
             }
         });
     }, [selected, store, activeScenario]);
+
+    const scenarioHighlights = useMemo(() => {
+        const map = {};
+        scenarioData.forEach(entry => {
+            if (entry.data) {
+                map[entry.id] = buildScenarioHighlightValues(entry.data.simulation, entry.data.scenario);
+            }
+        });
+        return map;
+    }, [scenarioData]);
 
     const handleExportCsv = useCallback(() => {
         const csv = buildCompareCsv(scenarioData, store, scenarioNames);
@@ -587,7 +674,7 @@ export default function ScenarioCompare() {
     const chartColors = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444'];
     const ageColWidth = 90;
     const scenarioColWidth = useMemo(() => {
-        const cols = Math.max(1, selected.length * 2);
+        const cols = Math.max(1, selected.length);
         return `calc((100% - ${ageColWidth}px) / ${cols})`;
     }, [selected.length, ageColWidth]);
 
@@ -616,13 +703,23 @@ export default function ScenarioCompare() {
             lines.push('');
             lines.push(`**Description:** ${getScenarioDescription(scen)}`);
             lines.push('');
-            const milestones = sim && scen ? buildScenarioMilestones(sim, scen) : [];
-            if (milestones.length) {
-                lines.push('**Major milestones:**');
-                milestones.forEach(item => lines.push(`- ${item}`));
+            const highlights = sim && scen ? buildScenarioHighlightValues(sim, scen) : null;
+            if (highlights) {
+                lines.push('**Highlights:**');
+                HIGHLIGHT_LABELS.forEach(label => {
+                    const item = highlights[label.key] || {};
+                    const value = item.value ?? 'n/a';
+                    lines.push(`- ${label.label}: ${value}`);
+                    if (label.subLabels?.length) {
+                        const subValues = item.subValues || [];
+                        label.subLabels.forEach((sub, idx) => {
+                            lines.push(`  - ${sub}: ${subValues[idx] ?? 'n/a'}`);
+                        });
+                    }
+                });
                 lines.push('');
             } else {
-                lines.push('**Major milestones:** n/a');
+                lines.push('**Highlights:** n/a');
                 lines.push('');
             }
         });
@@ -656,13 +753,6 @@ export default function ScenarioCompare() {
                 lines.push(`  - Property: ${formatCurrency(snap.property)}`);
                 lines.push(`  - Reverse Mortgage: ${formatCurrency(snap.reverseMortgage)}`);
                 lines.push(`  - Other Debt: ${formatCurrency(snap.totalDebt)}`);
-                const events = eventsUpToAge(sim, scen, age);
-                lines.push(`- Events (${events.length}):`);
-                if (events.length) {
-                    events.forEach(ev => lines.push(`  - ${ev.date} ${ev.text}`));
-                } else {
-                    lines.push('  - None');
-                }
                 lines.push('');
             });
         });
@@ -694,21 +784,6 @@ export default function ScenarioCompare() {
                 <ValueBlock label="Reverse Mortgage" value={`$${Math.round(snap.reverseMortgage).toLocaleString()}`} tone={snap.reverseMortgage > 0 ? 'bad' : 'plain'} />
                 <ValueBlock label="Other Debt" value={`$${Math.round(snap.totalDebt).toLocaleString()}`} tone={snap.totalDebt > 0 ? 'bad' : 'plain'} />
             </div>
-        );
-    };
-
-    const renderEventsCell = (simulation, scen, age) => {
-        const items = eventsUpToAge(simulation, scen, age);
-        if (!items.length) return <div className="text-xs text-slate-400">No events yet</div>;
-        return (
-            <ul className="text-xs text-slate-700 list-disc pl-4 space-y-1">
-                {items.map((ev, idx) => (
-                    <li key={`${ev.date}-${idx}`}>
-                        <span className="font-mono text-slate-500 mr-1">{ev.date}</span>
-                        {ev.text}
-                    </li>
-                ))}
-            </ul>
         );
     };
 
@@ -812,17 +887,14 @@ export default function ScenarioCompare() {
                     <colgroup>
                         <col style={{ width: `${ageColWidth}px` }} />
                         {scenarioData.map(entry => (
-                            <React.Fragment key={`colgroup-${entry.id}`}>
-                                <col style={{ width: scenarioColWidth }} />
-                                <col style={{ width: scenarioColWidth }} />
-                            </React.Fragment>
+                            <col key={`colgroup-${entry.id}`} style={{ width: scenarioColWidth }} />
                         ))}
                     </colgroup>
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th rowSpan={4} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase w-16">Age</th>
+                            <th rowSpan={3} className="px-3 py-3 text-left text-xs font-bold text-slate-600 uppercase w-16">Age</th>
                             {scenarioData.map((entry, idx) => (
-                                <th key={`${entry.id}-selector`} colSpan={2} className="px-3 py-3 min-w-[280px]">
+                                <th key={`${entry.id}-selector`} className="px-3 py-3 min-w-[280px]">
                                     <div className="flex items-center gap-2">
                                         <div className="flex-1">
                                             <ScenarioSelector
@@ -870,7 +942,7 @@ export default function ScenarioCompare() {
                         {scenarioData.map((entry) => {
                             const description = entry.data ? getScenarioDescription(entry.data.scenario) : null;
                             return (
-                                <th key={`${entry.id}-profiles`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
+                                <th key={`${entry.id}-profiles`} className="px-3 py-2 text-left min-w-[280px]">
                                     {description ? (
                                         <div className="text-xs text-slate-700 space-y-1">
                                             <div className="text-[10px] uppercase font-bold text-slate-400">Description</div>
@@ -883,39 +955,41 @@ export default function ScenarioCompare() {
                             );
                         })}
                     </tr>
-                        <tr className="bg-white border-b border-slate-200">
-                            {scenarioData.map((entry) => {
-                                if (!entry.data) {
-                                    return (
-                                        <th key={`${entry.id}-highlights`} colSpan={2} className="px-3 py-2 text-left min-w-[280px] text-xs text-slate-400">
-                                            No highlights available
-                                        </th>
-                                    );
-                                }
-                                const sim = entry.data.simulation;
-                                const scen = entry.data.scenario;
-                                const milestones = buildScenarioMilestones(sim, scen);
-                                return (
-                                    <th key={`${entry.id}-highlights`} colSpan={2} className="px-3 py-2 text-left min-w-[280px]">
-                                        <ul className="list-disc pl-4 text-xs text-slate-600 space-y-1">
-                                            {milestones.map(item => (
-                                                <li key={`${entry.id}-${item}`}>{item}</li>
-                                            ))}
-                                        </ul>
-                                    </th>
-                                );
-                            })}
-                        </tr>
                         <tr className="bg-slate-100 border-b border-slate-200 text-[11px] uppercase text-slate-500">
                             {scenarioData.map((entry) => (
-                                <React.Fragment key={`${entry.id}-labels`}>
-                                    <th className="px-3 py-2 text-left font-bold min-w-[180px]">Assets & Debt</th>
-                                    <th className="px-3 py-2 text-left font-bold min-w-[200px]">Events</th>
-                                </React.Fragment>
+                                <th key={`${entry.id}-labels`} className="px-3 py-2 text-left font-bold min-w-[180px]">Assets & Debt</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
+                        {buildHighlightRows().map((row) => (
+                            <tr key={`highlight-row-${row.key}-${row.type}-${row.subIndex ?? 'main'}`} className="border-b border-slate-200 bg-white">
+                                <td className="px-3 py-3 text-left text-xs text-slate-600 bg-slate-50">
+                                    <span className={row.type === 'sub' ? 'pl-4 text-slate-500' : 'font-semibold text-slate-700'}>
+                                        {row.label}
+                                    </span>
+                                </td>
+                                {scenarioData.map((entry) => {
+                                    const highlights = scenarioHighlights[entry.id];
+                                    if (!highlights) {
+                                        return (
+                                            <td key={`${entry.id}-highlight-${row.key}-${row.subIndex ?? 'main'}`} className="px-3 py-3 text-left min-w-[280px] text-xs text-slate-400">
+                                                n/a
+                                            </td>
+                                        );
+                                    }
+                                    const item = highlights[row.key] || {};
+                                    const value = row.type === 'sub'
+                                        ? (item.subValues?.[row.subIndex] ?? 'n/a')
+                                        : (item.value ?? 'n/a');
+                                    return (
+                                        <td key={`${entry.id}-highlight-${row.key}-${row.subIndex ?? 'main'}`} className="px-3 py-3 text-left min-w-[280px] text-xs text-slate-600">
+                                            {value}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
                         {ages.map(age => {
                             const isOpen = expandedAges.has(age);
                             return (
@@ -934,14 +1008,12 @@ export default function ScenarioCompare() {
                                         {scenarioData.map(entry => {
                                             const snap = entry.data ? pickSnapshotByAge(entry.data.simulation, entry.data.scenario, age) : null;
                                             const netWorth = snap ? Math.round(snap.netWorth || 0).toLocaleString() : null;
-                                            const eventCount = entry.data ? eventsUpToAge(entry.data.simulation, entry.data.scenario, age).length : 0;
                                             return (
-                                                <td key={`${entry.id}-summary-${age}`} colSpan={2} className="px-3 py-3 min-w-[200px]">
+                                                <td key={`${entry.id}-summary-${age}`} className="px-3 py-3 min-w-[200px]">
                                                     {snap ? (
                                                         <div className="flex items-center justify-between">
                                                             <div className="text-sm font-semibold text-slate-800">${netWorth}</div>
                                                             <div className="flex items-center gap-3 text-xs text-slate-500">
-                                                                <span>{eventCount} events</span>
                                                                 <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-[11px]">Summary</span>
                                                             </div>
                                                         </div>
@@ -956,14 +1028,9 @@ export default function ScenarioCompare() {
                                         <tr className="border-b border-slate-100 align-top">
                                             <td className="px-3 py-4 text-xs font-semibold text-slate-500 bg-slate-50">Details</td>
                                             {scenarioData.map(entry => (
-                                                <React.Fragment key={`${entry.id}-${age}`}>
-                                                    <td className="px-3 py-3 min-w-[180px]">
-                                                        {entry.data ? renderAssetsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
-                                                    </td>
-                                                    <td className="px-3 py-3 min-w-[200px]">
-                                                        {entry.data ? renderEventsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
-                                                    </td>
-                                                </React.Fragment>
+                                                <td key={`${entry.id}-${age}`} className="px-3 py-3 min-w-[180px]">
+                                                    {entry.data ? renderAssetsCell(entry.data.simulation, entry.data.scenario, age) : <span className="text-xs text-slate-400">No data</span>}
+                                                </td>
                                             ))}
                                         </tr>
                                     )}

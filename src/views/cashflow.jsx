@@ -1480,6 +1480,9 @@ export default function CashFlow() {
           const propertyStart = asset.inputs?.startDate ? parseISO(asset.inputs.startDate) : scenarioStartDate;
           const elapsedYears = Math.max(0, differenceInMonths(monthDate, propertyStart) / 12);
           const inflationMult = Math.pow(1 + inflationRate, elapsedYears);
+          const otherBaseDate = isAfter(propertyStart, scenarioStartDate) ? propertyStart : scenarioStartDate;
+          const otherElapsedYears = Math.max(0, differenceInMonths(monthDate, otherBaseDate) / 12);
+          const otherInflationMult = Math.pow(1 + inflationRate, otherElapsedYears);
           const propTaxMult = Math.pow(1 + propTaxRate, elapsedYears);
           const propInsMult = Math.pow(1 + propInsRate, elapsedYears);
           const costs = asset.inputs?.carryingCosts || {};
@@ -1495,7 +1498,7 @@ export default function CashFlow() {
           });
           const impTotal = impoundItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
-          const otherItems = other.map((item, idx) => ({ id: item.id || `${asset.id}-other-${idx}`, name: item.name || 'Property Expense', amount: (item.amount || 0) * inflationMult }));
+          const otherItems = other.map((item, idx) => ({ id: item.id || `${asset.id}-other-${idx}`, name: item.name || 'Property Expense', amount: (item.amount || 0) * otherInflationMult }));
           const otherTotal = otherItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
           const mortgageItems = [];
@@ -1729,7 +1732,7 @@ export default function CashFlow() {
           <div>
             <div className="flex items-center gap-3">
                  <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Receipt /> Cash Flow Manager</h2>
-                 <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">v3.3.0 layout</span>
+                 <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">v3.4.0 layout</span>
             </div>
             <div className="text-sm text-slate-500 mt-1">Use the tabs to move between overview, projections, and editing expense/income profiles.</div>
           </div>
@@ -1941,7 +1944,7 @@ export default function CashFlow() {
                       <ProfileManager
                           type={activeTab}
                           profiles={store.profiles}
-                          sequence={activeScenario.data[activeTab]?.profileSequence || []}
+                          sequence={getProfileSequenceForType(activeTab)}
                           actions={actions}
                           globalStartDateStr={globalStartDateStr}
                       />
@@ -1992,7 +1995,7 @@ export default function CashFlow() {
                       <ProfileManager
                           type={activeTab}
                           profiles={store.profiles}
-                          sequence={activeScenario.data[activeTab]?.profileSequence || []}
+                          sequence={getProfileSequenceForType(activeTab)}
                           actions={actions}
                           globalStartDateStr={globalStartDateStr}
                       />

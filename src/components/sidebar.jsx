@@ -206,7 +206,7 @@ export default function Sidebar({ currentView, setView }) {
 
       {/* HEADER */}
       <div className="p-6 border-b border-slate-800 flex justify-between items-center relative z-20">
-        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v3.3.0</span></h1>
+        <h1 className="text-white font-bold text-lg tracking-tight">BA Planner <span className="text-blue-500">v3.4.0</span></h1>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"><MoreVertical size={20} /></button>
         {isMenuOpen && (
             <>
